@@ -1,7 +1,7 @@
 # Voucher Housing Platform — MVP PRD (Skeleton)
 
 **Status:** SKELETON — not ready for stakeholder review
-**Scope:** MVP = coordinator console + tenant portal (per ARCHITECTURE_DISCOVERY.md §14 recommendation)
+**Scope:** MVP = broker operations console for 3BR+ voucher-friendly rentals; tenant/landlord portals are secondary
 **Upstream:** `docs/ARCHITECTURE_DISCOVERY.md` (1,522 lines) is the normative source. This PRD refines; it does not contradict. Where the two disagree, the discovery doc wins until this PRD is formally accepted.
 **Owner:** Jeff
 **Last updated:** 2026-09-16
@@ -29,14 +29,30 @@ Q2, Q3 from files you already have), then interview yourself on Q4, Q5, Q6.
 
 ---
 
+## 2026-09-20 Product Thesis Update — Broker Operations MVP
+
+Jeff's latest market insight changes the MVP emphasis. One-bedroom voucher rentals have enough demand that landlords often do not need to publicize them or split commission. The larger operational opportunity is **3+ bedroom voucher-friendly units**, where supply is comparatively larger and the broker can create value by bringing multiple qualified households to the same property efficiently.
+
+Therefore the first product should be framed as a **broker-side operations console**, not a public marketplace and not primarily a tenant portal. The broker middleman is the first real user. The MVP should help the broker:
+
+1. maintain a structured list of voucher clients and household needs;
+2. organize clients by **readiness, fit, responsiveness, and close-likelihood**;
+3. match 3+ bedroom properties to the strongest operational shortlist;
+4. schedule grouped showings so one property visit serves many qualified clients;
+5. track confirmations, no-shows, interest, applications, and outcomes.
+
+Important compliance boundary: "attractiveness" means operational likelihood to close — voucher/rent fit, bedroom eligibility, document readiness, location fit, responsiveness, urgency, and landlord requirement fit. It must **not** mean protected-class desirability. Ranking is internal to the broker workflow and must be explainable, editable, and auditable. Landlords should see only voucher-verified facts and the broker's recommended showing/application process, not sensitive program or household details.
+
+This update answers the previous Q4 gate for MVP direction: **the first real user is the broker/operator managing client lists, property inventory, and showing batches.** Tenant and landlord portals remain valuable, but they are secondary to the broker console for v1.
+
+---
+
 ## 1. Problem Statement ✅ INHERITED
 *Source: §1, §3, §4. Condense to ~400 words for non-technical reviewers.*
 
-- The placement pipeline has no single writer and no institutional memory.
-- Highest-severity failure is **F1, the silent stall**: a case stops moving and
-  no one notices, because no one owns it and elapsed time is invisible.
-- Secondary: F2 ownership ambiguity, F3 landlord attrition during information
-  blackout, F5 document chaos and PII leakage.
+- The broker middleman has no single operational system for client readiness, property fit, showing batches, and follow-up.
+- Highest-severity failure is still **F1, the silent stall**, but the MVP version is a showing/placement stall: a client, property, document gap, or follow-up sits invisible while the broker loses the unit or wastes a showing slot.
+- Secondary: F2 ownership ambiguity, F3 landlord attrition during information blackout, F5 document chaos and PII leakage, and F6 lost 3BR+ opportunity during the readiness race.
 
 **To write:** one paragraph of narrative, one "day in the life" of a stalled
 case, and the four questions from §5 ("The product's actual promise") stated as
@@ -47,11 +63,12 @@ the product's headline claim.
 ## 2. Goals and Non-Goals ✅ INHERITED
 *Source: §5.*
 
-**Goals** — answer in under five seconds, for any authorized user:
-1. Is this tenant ready?
-2. Does this apartment fit this voucher?
-3. What exactly is missing?
-4. Who has the file right now, and how long have they had it?
+**Goals** — answer in under five seconds, for the broker/operator:
+1. Which clients are ready enough to invite to this 3BR+ showing?
+2. Does this property fit this client's voucher, household size, location needs, and landlord requirements?
+3. What exactly is missing before application submission?
+4. Who is confirmed, who is a backup, who no-showed, and what follow-up is due?
+5. Which property/client opportunities are stalling right now?
 
 **Non-goals (v1)** — copy §5 verbatim. The first one is load-bearing and must
 survive into every downstream document:
@@ -67,15 +84,9 @@ not an e-signature vendor, not a general real-estate CRM.
 ## 3. Users and Roles ✅ INHERITED / 🔒 GATED on Q4
 *Source: §2, §6.*
 
-Roles: `admin`, `coordinator`, `broker`, `landlord`, `tenant`, `auditor`.
+Roles: `admin`, `broker`, `assistant`, `landlord`, `tenant`, `auditor`. The v1 power user is the `broker`; `assistant` covers staff helping with intake, confirmations, and follow-up.
 
-🔒 **Gate (Q4 — who is the first real user?):** solo-operator tooling and a
-multi-user platform have materially different priorities. This determines
-whether the coordinator console optimizes for one power user's throughput
-(keyboard-driven, dense, few confirmations) or for a team's coordination
-(handoffs, permissions, notification volume, onboarding). Building the wrong one
-is the most expensive mistake available at this stage. Keep `org_id` on every
-row regardless (§6, deferred multi-tenancy).
+✅ **Q4 answered for MVP:** first real user is the broker/operator managing a client book and property/showing pipeline. Optimize the first console for solo/small-team throughput: dense lists, fast filters, explainable match reasons, showing-batch creation, confirmation status, and follow-up tasks. Keep `org_id` on every row regardless (§6, deferred multi-tenancy).
 
 **To write per role:** primary job, top three tasks, device context, success
 metric, what they must *never* see.
@@ -102,18 +113,19 @@ Coverage required before review — one cluster per MVP capability in §6:
 
 | Cluster | Stories | Notes |
 |---|---|---|
-| Identity and access | staff TOTP MFA, tenant magic-link | 🔒 tenant auth path gated on Q9 (device reality) |
-| Client intake and profile | coordinator-entered, tenant self-serve, household composition | |
+| Identity and access | broker login/MFA, assistant access | Tenant login can wait until tenant portal exists |
+| Client intake and profile | broker-entered client, household composition, voucher facts, responsiveness/no-show notes | |
 | Voucher record | create, verify, attest, record expiry/recert | 🔒 field set gated on Q2 |
-| Document management | upload, review queue, reject with reason, expiry warning | 🔒 checklists gated on Q1 |
-| Apartment inventory | unit CRUD, availability, landlord association | |
-| Fit check | run, explain, override with reason | 🔒 utility math gated on Q3 |
-| Case workflow | advance stage, handoff owner, view stalled | 🔒 owner model gated on Q6 |
-| Tasks | assign, due-date, complete | The unit of accountability. |
-| Messaging | per-case thread, role-scoped, landlord PII-free | |
+| Document/readiness management | upload/link docs, showing-readiness, application-readiness, missing-items panel | 🔒 checklists gated on Q1 |
+| Property inventory | 3BR+ unit CRUD, availability, landlord association, showing windows | Prioritize 3BR+ because that is where supply/opportunity exists |
+| Fit and match scoring | run fit, explain score, override with reason | 🔒 utility math gated on Q3; score uses operational readiness, not protected traits |
+| Showing batches | create showing, invite top clients, add backups, confirm/no-show/interested | Killer MVP workflow |
+| Pipeline workflow | available → showing → interested → application → approved → leased | 🔒 owner model gated on Q6 |
+| Tasks | assign, due-date, complete | Follow-up unit of accountability. |
+| Messaging | confirmation/reminder templates, role-scoped, landlord PII-free | |
 | Audit log | append-only write, auditor read | Must ship at first pilot, not later. |
 | Notifications | missing docs, stage change, stall, showing reminder | |
-| Dashboards | coordinator queue, landlord pipeline, tenant next step | |
+| Dashboards | broker property pipeline, client shortlist, showing calendar | |
 | Admin | users/roles, requirement templates, utility schedule, retention | |
 
 ---
@@ -251,11 +263,12 @@ reasons.
 ## 12. Success Criteria ✅ INHERITED
 *Source: §6.*
 
-- A coordinator runs **all** active files in the platform, not spreadsheets.
-- "Who has this file and for how long" answerable for 100% of open cases.
-- Zero documents transiting SMS or personal email.
-- Median time-to-determine-readiness for a new inquiry under one business day.
-- At least one placement closes end-to-end inside the system.
+- A broker runs active clients, 3BR+ property inventory, showing batches, and follow-up tasks in the platform, not spreadsheets.
+- For any property, the broker can see the best operational shortlist: fit, readiness, responsiveness, missing items, and match reasons.
+- For any showing, confirmation/no-show/interested/application status is visible for every invited client.
+- Zero sensitive documents transiting SMS or personal email.
+- Median time to build a qualified showing batch for a 3BR+ property drops below one business day.
+- At least one 3BR+ placement closes end-to-end inside the system.
 
 ---
 

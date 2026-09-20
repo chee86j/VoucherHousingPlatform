@@ -54,9 +54,7 @@ the hard part. Here, matching is comparatively easy — the hard parts are:
   composition are all present. Fair-housing law constrains what the software may
   compute, surface, and rank.
 
-**One-sentence framing:** a permissioned, auditable case-coordination system
-that computes *readiness* and *fit* from documents, assigns a single responsible
-owner at every stage, and makes time-in-stage impossible to hide.
+**One-sentence framing:** a broker-side voucher housing operations platform that organizes client readiness, ranks operational match strength for 3BR+ properties, batches showings, and keeps every follow-up visible and auditable.
 
 ### The core insight to design around
 
@@ -70,6 +68,25 @@ blocked on it?**
 
 ---
 
+## 2026-09-20 Product Thesis Update — Broker Middleman and 3+ Bedroom Supply
+
+New domain insight: the market behaves differently by bedroom count. One-bedroom voucher rentals have high demand, so landlords often do not need broad broker outreach or commission-splitting to fill them. The broker's leverage is strongest around **3+ bedroom rentals**, where supply is more available and the broker can maximize value by organizing qualified households and batching showings.
+
+This reframes the architecture from a broad placement coordination system into a **broker operations platform** for voucher housing. The broker is the first power user. The system should optimize for:
+
+- dense client list management;
+- readiness and close-likelihood scoring;
+- property-to-client matching for 3+ bedroom units;
+- grouped showing creation and confirmation tracking;
+- no-show replacement workflows;
+- property pipeline status from available → showing → interested → application → approved → leased.
+
+The core system remains relational, auditable, and permissioned. However, the primary MVP surface is now the **broker console**, not a public tenant marketplace. Any scoring must be explainable and limited to operational fit/readiness signals. The platform must never rank people by protected characteristics or expose sensitive program/household details to landlords.
+
+Architectural implication: add first-class entities for `Client`, `Property`, `MatchScore`, `Showing`, and `ShowingInvite`. A future tenant portal and landlord portal can be layered on after the broker console proves the workflow.
+
+---
+
 ## 2. Key Users and Stakeholders
 
 ### Primary in-platform actors
@@ -79,7 +96,8 @@ blocked on it?**
 | **Tenant / Head of Household** | Get keys; know what's missing | Own case only: checklist, status, next step, showings | Uploads documents, confirms household data, accepts showings | Low technical literacy assumed. Mobile-first, photo upload, plain language, multilingual. May share a phone with family. |
 | **Household Member** | — | Nothing (usually non-user) | — | Data subject, not necessarily an account. Minors must never have accounts. Adult members may need consent records. |
 | **Landlord / Owner** | Fill the unit fast, get paid, stop guessing | Own units, own applicants (redacted), package status, inspection dates, payment milestones | Unit listings, ownership/HPD/tax docs, lease documents, availability | **Must see readiness, never protected characteristics.** This is the single highest fair-housing risk surface in the product. |
-| **Broker / Agent (licensed)** | Close the placement, earn fee | Assigned cases + own inventory | Unit data, showing coordination, document chase | Licensing status is a platform fact worth verifying and storing. |
+| **Broker / Agent (licensed)** | Fill 3BR+ units efficiently, close placements, earn fee | Own client book, property inventory, match scores, showing batches, follow-up queue | Client readiness notes, unit data, showing coordination, confirmation/no-show/interested/application status | **V1 power user.** Licensing status is worth verifying and storing. |
+| **Assistant / Operations Helper** | Help the broker keep clients and showings moving | Assigned clients/showings/tasks | Intake updates, confirmations, follow-up notes | Optional v1 role for small-team throughput. |
 | **Housing Specialist / Placement Coordinator** | Move cases, unblock stalls | Full caseload, cross-case queue, all documents | Everything operational: stage transitions, task assignment, document verification | The power user. The product lives or dies on this console. |
 | **Caseworker (agency/nonprofit)** | Serve their client, satisfy agency process | Their clients' cases, limited cross-org visibility | Voucher facts, agency submissions, breakdown letters | **External org.** Often unresponsive, high turnover. Design for their absence, not their participation. |
 | **Shelter Staff** | Move residents out to permanent housing | Residents' cases, document collection status | Document upload on behalf of resident, household verification | Acts *for* the tenant — requires a delegated-access model with audit. |
@@ -99,9 +117,9 @@ blocked on it?**
 
 Three distinct trust tiers, three distinct UIs:
 
-1. **Tenant** — single-case, guided, reassuring, "what do I do next."
-2. **Landlord/Broker** — inventory + pipeline, aggressively redacted.
-3. **Coordinator/Admin** — dense operational console, cross-case, queue-driven.
+1. **Broker/Assistant Console** — dense operational command center for client lists, 3BR+ properties, match reasons, showing batches, confirmations, no-shows, and follow-up tasks. This is the MVP surface.
+2. **Tenant** — later single-case, guided, reassuring, "what do I do next."
+3. **Landlord** — later inventory + pipeline, aggressively redacted.
 
 Do not attempt one responsive layout for all three.
 
@@ -289,12 +307,12 @@ requirement templates per program, and outcome history.*
 
 ## 5. Core Product Concept
 
-> **A permissioned coordination system of record for voucher-based placements.**
-> It computes tenant readiness and unit fit from verified documents, enforces a
-> single accountable owner at every workflow stage, and makes delay visible to
-> everyone authorized to see it.
+> **A broker operations system of record for voucher-based placements.**
+> It computes client readiness, property fit, operational match strength, and
+> showing-batch status so the broker can fill 3BR+ units with less wasted time
+> while keeping decisions explainable and auditable.
 
-### Six capability pillars
+### Eight capability pillars
 
 **P1 — Verified Client Profile**
 A structured household record with a **computed, always-current readiness
@@ -311,21 +329,36 @@ availability date, landlord program experience.
 **P3 — Voucher Fit Engine**
 Deterministic, explainable, auditable. Given (voucher, unit, utility allowance
 schedule) → `eligible | ineligible | needs-review` **plus a human-readable
-reason string**. No ML. No opaque scoring. This must be defensible to a
-regulator line by line.
+reason string**. No ML. No opaque scoring for eligibility. This must be
+defensible to a regulator line by line.
 
-**P4 — Document Tracking**
+**P4 — Broker Match Scoring**
+A broker-only operational score for prioritizing outreach and showing invites.
+Inputs may include voucher/rent fit, bedroom eligibility, location preference,
+document/showing readiness, urgency, responsiveness, prior no-show history, and
+legitimate landlord requirements. Inputs must exclude protected-class and
+sensitive program details unless counsel approves a specific operational use.
+Every score must show reasons; every manual override must record who changed it
+and why.
+
+**P5 — Grouped Showing Operations**
+For each 3BR+ property, the broker can create a showing window, invite the top
+shortlist, add backups, track confirmations, record attendance/no-shows, capture
+interest level, and move qualified clients into application follow-up. This is
+the workflow that turns supply into broker value.
+
+**P6 — Document Tracking**
 Per-program requirement templates. Every case has a checklist with states
 (`missing | uploaded | under_review | verified | rejected | expired`).
 Expiry-aware — documents go stale, and staleness must surface before submission,
 not after rejection.
 
-**P5 — Workflow Status and Ownership**
+**P7 — Workflow Status and Ownership**
 Explicit finite state machine (§9). Each state has exactly one owner, an
 expected duration, and an escalation rule. Time-in-stage is a first-class,
 queryable metric.
 
-**P6 — Secure, Scoped Communication**
+**P8 — Secure, Scoped Communication**
 In-platform threads per case with role-scoped visibility. Landlord threads
 **must not** carry tenant PII. All communication is auditable and retained
 alongside the case, replacing the SMS/email sprawl.
@@ -342,12 +375,13 @@ alongside the case, replacing the SMS/email sprawl.
 
 ### The product's actual promise
 
-Answer four questions in under five seconds, correctly, for any authorized user:
+Answer five broker workflow questions in under five seconds, correctly, for any authorized user:
 
-1. Is this tenant ready?
-2. Does this apartment fit this voucher?
-3. What exactly is missing?
-4. Who has the file right now, and how long have they had it?
+1. Which clients should I invite to this 3BR+ showing first, and why?
+2. Does this property fit this voucher/household, and what are the blockers?
+3. Is this client showing-ready or application-ready?
+4. Who confirmed, who needs follow-up, and who is my backup list?
+5. Which property/client/showing opportunities are stalling right now?
 
 ---
 
@@ -359,15 +393,17 @@ Constraint: buildable by a solo technical founder or a team of two to three in a
 ### Must-have (MVP)
 
 **Identity and access**
-- Email/password + TOTP MFA for staff; magic-link for tenants (lowest-friction
-  credible option for non-technical users).
-- Roles: `admin`, `coordinator`, `broker`, `landlord`, `tenant`, `auditor`.
+- Email/password + TOTP MFA for broker/admin users; assistant role for delegated operations.
+- Tenant magic-link can wait until a tenant portal exists.
+- Roles: `admin`, `broker`, `assistant`, `landlord`, `tenant`, `auditor`.
 - Server-enforced, resource-scoped authorization. Never client-side gating.
 
 **Client intake and profile**
-- Structured intake form (coordinator-entered and tenant self-serve).
-- Household composition with member records.
-- Computed readiness state with a "why not ready" explanation panel.
+- Broker-entered client profile optimized for fast qualification and follow-up.
+- Household composition, bedroom eligibility, voucher facts, preferred areas,
+  urgency, document status, responsiveness, no-show history, and broker notes.
+- Computed showing-readiness and application-readiness states with a "why not"
+  explanation panel.
 
 **Voucher record**
 - Program type, status, new/transfer flag, issue + expiry dates, approved
@@ -382,13 +418,26 @@ Constraint: buildable by a solo technical founder or a team of two to three in a
 - Review queue: verify / reject with reason / request re-upload.
 - Expiry tracking.
 
-**Apartment inventory**
-- Unit CRUD, landlord association, availability state, the eligibility-relevant
-  attribute set.
+**Property inventory**
+- 3BR+ unit CRUD first, with landlord association, availability state, showing
+  windows, commission/split notes, and eligibility-relevant attributes.
+- 1BR inventory is lower MVP priority because demand is already strong and less
+  broker coordination is needed.
 
-**Fit check**
+**Fit and broker match scoring**
 - Deterministic eligibility evaluation with reason output, run on demand and
   cached per (unit, voucher) pair.
+- Broker-only match score with reason chips for operational signals: voucher fit,
+  bedroom eligibility, location fit, document readiness, urgency,
+  responsiveness, no-show risk, and legitimate landlord requirements.
+- Manual score override requires a reason and writes to audit log.
+
+**Grouped showings**
+- Create a showing window for a property.
+- Suggest top clients and backups.
+- Track invited, confirmed, declined, no-show, attended, interested,
+  application-started.
+- Send reminders that avoid PII in SMS/email bodies.
 
 **Case workflow**
 - The §9 state machine with guards.
@@ -435,12 +484,14 @@ Constraint: buildable by a solo technical founder or a team of two to three in a
 
 ### MVP success criteria
 
-- A coordinator runs **all** active files in the platform, not in spreadsheets.
-- "Who has this file and for how long" is answerable for 100% of open cases.
+- A broker runs active clients, 3BR+ inventory, showing batches, and follow-up in
+  the platform, not in spreadsheets.
+- For any 3BR+ property, the broker can generate an explainable qualified
+  shortlist in under one business day.
+- For any showing, confirmations, backups, no-shows, interest, and application
+  follow-up are visible in one place.
 - Zero documents transiting SMS or personal email.
-- Median time-to-determine-readiness for a new inquiry drops below one business
-  day.
-- At least one placement closes end-to-end inside the system.
+- At least one 3BR+ placement closes end-to-end inside the system.
 
 ---
 
@@ -917,7 +968,7 @@ them, nag on them, and keep the landlord informed so they don't walk.
 5. **Stall detection is an overlay flag, not a state.** Moving a stalled case to
    an `ON_HOLD` stage would reset its clock and hide exactly the metric that
    matters. A worker sets `stalled = true` when `now - stage_entered_at > sla`,
-   and it surfaces in the coordinator queue and admin dashboard.
+   and it surfaces in the broker console and admin dashboard.
 6. **Re-entrant loops are counted.** `PRECLEARANCE → rejected_fixable →
    PRECLEARANCE` increments a cycle counter; three cycles escalates. Loop count
    is one of the most honest predictors of a doomed file.
@@ -1318,7 +1369,7 @@ Prove the risky mechanics cheaply. Throwaway-tolerant.
 - Requirement template engine + checklist computation + readiness derivation.
 - Case FSM with guards and `CaseStageHistory`.
 - Fit evaluation rules with reason output.
-- Minimal coordinator queue.
+- Minimal broker console: client list, 3BR+ property pipeline, showing batch manager.
 
 **Gate:** walk a synthetic case from INQUIRY to PLACED; readiness and fit are
 correct against hand-checked cases; authorization matrix green.
@@ -1511,7 +1562,7 @@ Why the PRD and not something more technical:
    spreadsheet that becomes the test file. Write it before the code (R4).
 5. **User-flow diagrams** — three flows only: tenant document submission,
    coordinator case advancement, landlord onboarding. Reveals dead ends cheaply.
-6. **Low-fidelity wireframes** — coordinator queue and tenant checklist. These
+6. **Low-fidelity wireframes** — property shortlist, broker client list, and showing batch manager. These
    two screens are the product; the rest is supporting cast.
 7. **Technical implementation plan** — sprint-level, with the §13 Phase 1 gate as
    the first milestone.

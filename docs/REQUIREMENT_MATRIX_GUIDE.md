@@ -33,6 +33,29 @@ expensive class of unwind available in this codebase.
 
 ---
 
+## 2026-09-20 Product Thesis Update — Requirement Matrix in the Broker MVP
+
+The requirement matrix is still important, but its first MVP use is more practical and broker-facing: determine whether a client is **showing-ready** and whether a client-property match is worth the broker's time.
+
+For the broker operations MVP, the matrix should support two readiness layers:
+
+1. **Showing readiness** — enough verified information to justify inviting the client to a property showing.
+2. **Application readiness** — enough verified documentation to submit quickly if the client likes the unit.
+
+This distinction matters because the broker's workflow is now built around grouped showings for 3+ bedroom properties. A client may be worth inviting to a showing before every final package document is complete, but the system must make the gap explicit and show exactly what is missing before application submission.
+
+Add or preserve columns that help compute broker workflow signals:
+
+- `blocks_showing_invite` — whether missing this item should prevent a showing invite.
+- `blocks_application_submission` — whether missing this item prevents application/package submission.
+- `broker_visible` — whether the broker can see this requirement status.
+- `landlord_visible` — default false; landlord visibility remains a separate compliance decision.
+- `readiness_weight` — optional broker-facing operational weight, never a protected-class desirability score.
+
+The matrix must continue to avoid landlord-visible sensitive program or household details. It should help the broker prepare the right clients for the right properties, not create an unlawful applicant-screening tool.
+
+---
+
 ## 1. How to fill it (the empirical path)
 
 This is document archaeology, not design. Follow the evidence.
