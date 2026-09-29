@@ -3,6 +3,7 @@
 **Status:** SKELETON — not ready for stakeholder review
 **Scope:** MVP = broker operations console for 3BR+ voucher-friendly rentals; tenant/landlord portals are secondary
 **Upstream:** `docs/ARCHITECTURE_DISCOVERY.md` (1,522 lines) is the normative source. This PRD refines; it does not contradict. Where the two disagree, the discovery doc wins until this PRD is formally accepted.
+**UI/UX companion:** `docs/UI_UX_DESIGN.md` defines the broker-console interaction model, including drag-and-drop workflows, accessibility alternatives, and audit requirements.
 **Owner:** Jeff
 **Last updated:** 2026-09-16
 
@@ -120,6 +121,7 @@ Coverage required before review — one cluster per MVP capability in §6:
 | Property inventory | 3BR+ unit CRUD, availability, landlord association, showing windows | Prioritize 3BR+ because that is where supply/opportunity exists |
 | Fit and match scoring | run fit, explain score, override with reason | 🔒 utility math gated on Q3; score uses operational readiness, not protected traits |
 | Showing batches | create showing, invite top clients, add backups, confirm/no-show/interested | Killer MVP workflow |
+| Drag-and-drop operations | move clients through stages, build showing groups, reorder backups | See `docs/UI_UX_DESIGN.md`; every drag action needs accessible alternatives and audit events |
 | Pipeline workflow | available → showing → interested → application → approved → leased | 🔒 owner model gated on Q6 |
 | Tasks | assign, due-date, complete | Follow-up unit of accountability. |
 | Messaging | confirmation/reminder templates, role-scoped, landlord PII-free | |

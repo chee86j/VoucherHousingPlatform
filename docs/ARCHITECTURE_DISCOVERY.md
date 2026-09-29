@@ -83,7 +83,7 @@ This reframes the architecture from a broad placement coordination system into a
 
 The core system remains relational, auditable, and permissioned. However, the primary MVP surface is now the **broker console**, not a public tenant marketplace. Any scoring must be explainable and limited to operational fit/readiness signals. The platform must never rank people by protected characteristics or expose sensitive program/household details to landlords.
 
-Architectural implication: add first-class entities for `Client`, `Property`, `MatchScore`, `Showing`, and `ShowingInvite`. A future tenant portal and landlord portal can be layered on after the broker console proves the workflow.
+Architectural implication: add first-class entities for `Client`, `Property`, `MatchScore`, `Showing`, and `ShowingInvite`. A future tenant portal and landlord portal can be layered on after the broker console proves the workflow. The broker console should support drag-and-drop productivity patterns for moving clients through stages, building property shortlists, assembling showing batches, and reordering backups; see `docs/UI_UX_DESIGN.md` for accessibility and audit requirements.
 
 ---
 
