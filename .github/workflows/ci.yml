@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+    branches: [main, 'feat/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Typecheck shared
+        run: pnpm --filter @vhp/shared run typecheck
+
+      - name: Typecheck database
+        run: pnpm --filter @vhp/database run typecheck
+
+      - name: Typecheck API
+        run: pnpm --filter @vhp/api run typecheck
+
+      - name: Lint API
+        run: pnpm --filter @vhp/api run lint
+
+      - name: Lint Web
+        run: pnpm --filter @vhp/web run lint
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Build shared
+        run: pnpm --filter @vhp/shared run build
+
+      - name: Build database
+        run: pnpm --filter @vhp/database run build
+
+      - name: Build API
+        run: pnpm --filter @vhp/api run build
+
+      - name: Build Web
+        run: pnpm --filter @vhp/web run build
+
+  audit:
+    name: Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run pnpm audit
+        run: pnpm audit --audit-level=high
+        continue-on-error: true
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: build
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: vhp
+          POSTGRES_PASSWORD: vhp_test
+          POSTGRES_DB: vhp_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma Client
+        run: pnpm db:generate
+
+      - name: Run migrations
+        run: pnpm db:push
+        env:
+          DATABASE_URL: postgresql://vhp:***@localhost:5432/vhp_test
+
+      - name: Run API tests
+        run: pnpm --filter @vhp/api run test
+        env:
+          DATABASE_URL: postgresql://vhp:***@localhost:5432/vhp_test
+          JWT_SECRET: test-secret
+          NODE_ENV: test

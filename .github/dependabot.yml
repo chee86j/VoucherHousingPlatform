@@ -1,0 +1,39 @@
+version: 2
+updates:
+  # Root and workspace packages
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        patterns:
+          - '@types/*'
+          - 'eslint*'
+          - 'typescript'
+          - 'jest*'
+        update-types:
+          - minor
+          - patch
+      production-dependencies:
+        patterns:
+          - '*'
+        exclude-patterns:
+          - '@types/*'
+          - 'eslint*'
+          - 'typescript'
+          - 'jest*'
+    ignore:
+      # Ignore major version updates for stability
+      - dependency-name: '*'
+        update-types: ['version-update:semver-major']
+
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5

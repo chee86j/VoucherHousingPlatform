@@ -1,0 +1,253 @@
+// VoucherHousingPlatform - Phase 1 Schema
+// Foundation: Organization, User, AuditLog
+// 
+// Design principles from docs/ARCHITECTURE_DISCOVERY.md:
+// - org_id on every table from day one (§7)
+// - PII columns marked for application-layer encryption (§7)
+// - Append-only audit log with hash chaining (§7, §10 R6)
+// - Server-enforced authorization, never client-side gating (§9)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// Organization - Multi-tenancy foundation
+// ============================================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  type      OrgType  @default(BROKER)
+  settings  Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  users     User[]
+  auditLogs AuditLog[]
+
+  @@map("organizations")
+}
+
+enum OrgType {
+  BROKER      // Brokerage firm
+  NONPROFIT   // Housing nonprofit
+  AGENCY      // Government agency (future)
+  PLATFORM    // Platform admin org
+}
+
+// ============================================================================
+// User - Identity with role-based access
+// ============================================================================
+
+model User {
+  id             String     @id @default(cuid())
+  orgId          String     @map("org_id")
+  
+  // PII fields - marked for application-layer encryption
+  // @encrypted annotation is a reminder; actual encryption in application layer
+  email          String     @unique // @encrypted
+  emailVerified  DateTime?  @map("email_verified")
+  phone          String?    // @encrypted
+  name           String     // @encrypted
+  
+  // Auth
+  passwordHash   String?    @map("password_hash")
+  role           UserRole   @default(TENANT)
+  status         UserStatus @default(PENDING)
+  
+  // MFA - mandatory for staff who can read documents (§7)
+  mfaEnrolled    Boolean    @default(false) @map("mfa_enrolled")
+  mfaSecret      String?    @map("mfa_secret") // @encrypted
+  
+  // Metadata
+  lastLoginAt    DateTime?  @map("last_login_at")
+  lastLoginIp    String?    @map("last_login_ip")
+  failedAttempts Int        @default(0) @map("failed_attempts")
+  lockedUntil    DateTime?  @map("locked_until")
+  deactivatedAt  DateTime?  @map("deactivated_at")
+  deactivatedBy  String?    @map("deactivated_by")
+  
+  createdAt      DateTime   @default(now()) @map("created_at")
+  updatedAt      DateTime   @updatedAt @map("updated_at")
+  
+  // Relations
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  auditLogs      AuditLog[]   @relation("AuditLogActor")
+  
+  // Sessions (Redis-backed, but we track metadata)
+  sessions       Session[]
+  
+  @@index([orgId])
+  @@index([email])
+  @@index([status])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN      // Platform admin, org owner
+  BROKER     // V1 power user - manages client book and showings
+  ASSISTANT  // Helps broker with intake, confirmations, follow-up
+  LANDLORD   // Property owner - sees redacted applicant info
+  TENANT     // Head of household - sees own case only
+  AUDITOR    // Read-only compliance access
+}
+
+enum UserStatus {
+  PENDING     // Awaiting email verification
+  ACTIVE      // Normal access
+  SUSPENDED   // Temporarily blocked
+  DEACTIVATED // Permanently disabled
+}
+
+// ============================================================================
+// Session - Server-side session tracking
+// ============================================================================
+
+model Session {
+  id            String   @id @default(cuid())
+  userId        String   @map("user_id")
+  
+  // Session metadata
+  token         String   @unique // Session token (hashed)
+  ipAddress     String?  @map("ip_address")
+  userAgent     String?  @map("user_agent")
+  
+  // Lifecycle
+  createdAt     DateTime @default(now()) @map("created_at")
+  lastActivityAt DateTime @default(now()) @map("last_activity_at")
+  expiresAt     DateTime @map("expires_at")
+  revokedAt     DateTime? @map("revoked_at")
+  revokedReason String?  @map("revoked_reason")
+  
+  // Relations
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// ============================================================================
+// AuditLog - Append-only, hash-chained (§7, §10 R6)
+// ============================================================================
+
+// CRITICAL: The application database role must have INSERT-only permissions
+// on this table. No UPDATE or DELETE grants. Hash chaining ensures tampering
+// is detectable. This is verified in the pre-pilot compliance gate.
+
+model AuditLog {
+  id           String      @id @default(cuid())
+  orgId        String      @map("org_id")
+  
+  // Actor information
+  actorUserId  String?     @map("actor_user_id")
+  actorIp      String?     @map("actor_ip")
+  actorUserAgent String?   @map("actor_user_agent")
+  
+  // Action details
+  action       AuditAction
+  resourceType String      @map("resource_type")
+  resourceId   String?     @map("resource_id")
+  
+  // State change tracking
+  beforeState  Json?       @map("before_state")
+  afterState   Json?       @map("after_state")
+  
+  // Override tracking (§9 rule 3)
+  reason       String?     // Required for overrides
+  severity     AuditSeverity @default(NORMAL)
+  
+  // Hash chaining for tamper detection
+  prevHash     String?     @map("prev_hash")
+  hash         String      // SHA-256 of (id, action, resourceType, resourceId, actorUserId, timestamp, prevHash)
+  
+  // Timestamp
+  occurredAt   DateTime    @default(now()) @map("occurred_at")
+  
+  // Relations
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  actor        User?        @relation("AuditLogActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  
+  @@index([orgId])
+  @@index([actorUserId])
+  @@index([resourceType, resourceId])
+  @@index([occurredAt])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+enum AuditAction {
+  // Auth
+  LOGIN
+  LOGOUT
+  LOGIN_FAILED
+  MFA_ENROLLED
+  MFA_VERIFIED
+  PASSWORD_CHANGED
+  PASSWORD_RESET_REQUESTED
+  
+  // CRUD
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  
+  // Documents (§7 - every read audited)
+  DOCUMENT_UPLOAD
+  DOCUMENT_VIEW
+  DOCUMENT_DOWNLOAD
+  SIGNED_URL_MINTED
+  
+  // Workflow (§9)
+  STAGE_TRANSITION
+  OVERRIDE
+  OWNER_CHANGE
+  STALL_FLAGGED
+  
+  // Showing operations
+  SHOWING_CREATED
+  SHOWING_UPDATED
+  INVITE_SENT
+  INVITE_RESPONDED
+  STATUS_CHANGED
+  
+  // Match operations
+  MATCH_SCORED
+  SHORTLIST_UPDATED
+  PRIORITY_CHANGED
+  NOT_A_FIT_MARKED
+  
+  // Admin
+  USER_CREATED
+  USER_UPDATED
+  USER_DEACTIVATED
+  ROLE_CHANGED
+  PERMISSION_GRANTED
+  PERMISSION_REVOKED
+  
+  // Export and access
+  EXPORT
+  BULK_READ
+  
+  // System
+  SESSION_CREATED
+  SESSION_REVOKED
+  SYSTEM_ERROR
+}
+
+enum AuditSeverity {
+  LOW       // Routine operations
+  NORMAL    // Standard operations
+  ELEVATED  // Override operations, manual interventions
+  HIGH      // Security-relevant, permission changes
+  CRITICAL  // Potential security incidents
+}
