@@ -103,7 +103,7 @@ See `docs/ARCHITECTURE_DISCOVERY.md` §10 for the complete security model.
 The MVP is being built in phases:
 
 1. ✅ **Foundation** — Monorepo, auth, audit, database schema
-2. 🔲 **Core Entities** — Client, Property, Unit, Voucher
+2. ✅ **Core Entities** — Client, Property, Unit, Voucher, Landlord
 3. 🔲 **Workflow Engine** — FSM, fit engine, documents
 4. 🔲 **Showings** — Grouped showings, match scoring, tasks
 5. 🔲 **Broker Console** — Dashboard, pipeline board, drag-and-drop

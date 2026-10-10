@@ -15,6 +15,8 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { HealthModule } from './health/health.module';
+import { ClientsModule } from './clients/clients.module';
+import { PropertiesModule } from './properties/properties.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
@@ -53,6 +55,8 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     AuthModule,
     UsersModule,
     HealthModule,
+    ClientsModule,
+    PropertiesModule,
   ],
   providers: [
     // Global rate limiting guard
