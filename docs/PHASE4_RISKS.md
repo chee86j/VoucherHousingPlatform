@@ -1,0 +1,7 @@
+# Phase 4 operational limits and risk notes
+
+- Internal staff API only. Creating an `INVITED` participant records an internal state, **not** delivery of an invitation. No email/SMS provider or tenant/landlord access exists here.
+- Objective fit checks remain in Phase 3; Phase 4 contains **no** numeric applicant scores, prioritization, automatic selection, or landlord disclosure. FH-1: filter, never rank. Contested allocation policies require counsel sign-off before implementation.
+- Showing overlaps are checked inside a serializable transaction after taking a PostgreSQL per-unit advisory lock. The application must use these API paths for scheduling; direct database writers bypass this check. Concurrent transaction serialization failures may surface as retryable errors; no retry loop is installed.
+- All mutations write `showing_events` in the same transaction. These are operational history, **not** a compliance-ready immutable audit: table privileges, cross-tenant FK consistency at DB level, retention, tamper evidence, and access-log guarantees need separate review. Existing global audit interceptor is best-effort.
+- Foreign-key org consistency is checked in service queries; database foreign keys alone do not enforce same-org relationships. Integration tests against a real migrated PostgreSQL instance, an API authorization integration suite, notification delivery, pagination beyond the first 100 items, and timezone UX are follow-ups. Migrate with `pnpm db:migrate` against configured PostgreSQL before using these endpoints.

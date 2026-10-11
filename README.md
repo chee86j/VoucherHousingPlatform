@@ -104,8 +104,8 @@ The MVP is being built in phases:
 
 1. ✅ **Foundation** — Monorepo, auth, audit, database schema
 2. ✅ **Core Entities** — Client, Property, Unit, Voucher, Landlord
-3. 🔲 **Workflow Engine** — FSM, fit engine, documents
-4. 🔲 **Showings** — Grouped showings, match scoring, tasks
+3. 🟡 **Workflow Engine** — Case FSM, objective fit snapshots and checklist schema; document handling remains pending
+4. 🟡 **Showings** — Broker-side grouped sessions, attendance and manual follow-up tasks API; no scoring, ranking or automatic unit selection (counsel gate)
 5. 🔲 **Broker Console** — Dashboard, pipeline board, drag-and-drop
 6. 🔲 **Documents & Admin** — Upload, notifications, admin tools
 

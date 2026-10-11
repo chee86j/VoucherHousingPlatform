@@ -36,6 +36,8 @@ model Organization {
   landlords Landlord[]
   utilityAllowanceSchedules UtilityAllowanceSchedule[]
   cases Case[]
+  showingSessions ShowingSession[]
+  followUpTasks FollowUpTask[]
 
   @@map("organizations")
 }
@@ -90,6 +92,9 @@ model User {
   sessions       Session[]
   ownedCases     Case[] @relation("CaseOwner")
   caseEvents     CaseStageHistory[] @relation("CaseActor")
+  showingEvents ShowingEvent[] @relation("ShowingEventActor")
+  showingTasks FollowUpTask[] @relation("TaskOwner")
+  createdShowingTasks FollowUpTask[] @relation("TaskCreator")
   
   @@index([orgId])
   @@index([email])
@@ -299,6 +304,7 @@ model Client {
   householdMembers  HouseholdMember[]
   vouchers          Voucher[]
   cases             Case[]
+  showingParticipants ShowingParticipant[]
   
   @@index([orgId])
   @@index([pipelineStage])
@@ -517,6 +523,7 @@ model Unit {
   property           Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   cases              Case[]
   fitEvaluations     FitEvaluation[]
+  showingSessions ShowingSession[]
   
   @@index([propertyId])
   @@index([bedrooms])
@@ -599,6 +606,7 @@ model Case {
   history        CaseStageHistory[]
   fitEvaluations FitEvaluation[]
   checklist      ChecklistItem[]
+  followUpTasks FollowUpTask[]
   @@index([orgId, stage])
   @@index([orgId, clientId])
   @@index([ownerUserId])
@@ -669,4 +677,94 @@ model ChecklistItem {
   case          Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
   @@unique([caseId, code])
   @@map("checklist_items")
+}
+
+// Phase 4: internal scheduling only; no applicant score, ranking or selection.
+enum ShowingStatus {
+  SCHEDULED
+  CANCELLED
+}
+enum ParticipantStatus {
+  INVITED
+  CONFIRMED
+  DECLINED
+  ATTENDED
+  NO_SHOW
+}
+enum FollowUpTaskStatus {
+  OPEN
+  COMPLETED
+}
+
+model ShowingSession {
+  id String @id @default(cuid())
+  orgId String @map("org_id")
+  unitId String @map("unit_id")
+  startsAt DateTime @map("starts_at")
+  endsAt DateTime @map("ends_at")
+  status ShowingStatus @default(SCHEDULED)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  unit Unit @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  participants ShowingParticipant[]
+  events ShowingEvent[]
+  tasks FollowUpTask[]
+  @@index([orgId, startsAt])
+  @@index([unitId, startsAt, endsAt])
+  @@map("showing_sessions")
+}
+
+model ShowingParticipant {
+  id String @id @default(cuid())
+  sessionId String @map("session_id")
+  clientId String @map("client_id")
+  status ParticipantStatus @default(INVITED)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  session ShowingSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  @@unique([sessionId, clientId])
+  @@map("showing_participants")
+}
+
+model FollowUpTask {
+  id String @id @default(cuid())
+  orgId String @map("org_id")
+  sessionId String? @map("session_id")
+  caseId String? @map("case_id")
+  ownerUserId String @map("owner_user_id")
+  createdById String @map("created_by_id")
+  title String
+  dueAt DateTime @map("due_at")
+  status FollowUpTaskStatus @default(OPEN)
+  completedAt DateTime? @map("completed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  session ShowingSession? @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  case Case? @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  owner User @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  creator User @relation("TaskCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  events ShowingEvent[]
+  @@index([orgId, status, dueAt])
+  @@map("follow_up_tasks")
+}
+
+// Transactional domain history; global audit interceptor is best-effort.
+model ShowingEvent {
+  id String @id @default(cuid())
+  sessionId String? @map("session_id")
+  taskId String? @map("task_id")
+  actorUserId String @map("actor_user_id")
+  action String
+  clientId String? @map("client_id")
+  fromStatus String? @map("from_status")
+  toStatus String? @map("to_status")
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  session ShowingSession? @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+  task FollowUpTask? @relation(fields: [taskId], references: [id], onDelete: Restrict)
+  actor User @relation("ShowingEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  @@index([sessionId, occurredAt])
+  @@index([taskId, occurredAt])
+  @@map("showing_events")
 }

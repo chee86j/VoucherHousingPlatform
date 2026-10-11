@@ -18,6 +18,7 @@ import { HealthModule } from './health/health.module';
 import { ClientsModule } from './clients/clients.module';
 import { PropertiesModule } from './properties/properties.module';
 import { WorkflowModule } from './workflow/workflow.module';
+import { ShowingsModule } from './showings/showings.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
@@ -59,6 +60,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     ClientsModule,
     PropertiesModule,
     WorkflowModule,
+    ShowingsModule,
   ],
   providers: [
     // Global rate limiting guard
