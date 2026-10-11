@@ -26,11 +26,11 @@ import {
   CreateVoucherDto, 
   CreateHouseholdMemberDto 
 } from './dto/clients.dto';
-import { JwtAuthGuard } from '../auth/guards/auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { UserRole, ClientPipelineStage } from '@vhp/database';
+import { UserRole, ClientPipelineStage, Voucher } from '@vhp/database';
 
 interface AuthUser {
   id: string;
@@ -38,8 +38,8 @@ interface AuthUser {
   role: UserRole;
 }
 
-@Controller('api/clients')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller('clients')
+@UseGuards(AuthGuard, RolesGuard)
 export class ClientsController {
   constructor(private readonly clientsService: ClientsService) {}
 
@@ -112,7 +112,7 @@ export class ClientsController {
     @CurrentUser() user: AuthUser,
     @Param('clientId') clientId: string,
     @Body() dto: CreateVoucherDto,
-  ) {
+  ): Promise<Voucher> {
     return this.clientsService.addVoucher(clientId, user.orgId, dto);
   }
 
@@ -123,7 +123,7 @@ export class ClientsController {
     @Param('clientId') clientId: string,
     @Param('voucherId') voucherId: string,
     @Body('verificationState') verificationState: string,
-  ) {
+  ): Promise<Voucher> {
     return this.clientsService.updateVoucherVerification(
       voucherId,
       clientId,

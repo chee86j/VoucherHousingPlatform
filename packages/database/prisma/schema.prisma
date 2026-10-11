@@ -35,6 +35,7 @@ model Organization {
   clients   Client[]
   landlords Landlord[]
   utilityAllowanceSchedules UtilityAllowanceSchedule[]
+  cases Case[]
 
   @@map("organizations")
 }
@@ -87,6 +88,8 @@ model User {
   
   // Sessions (Redis-backed, but we track metadata)
   sessions       Session[]
+  ownedCases     Case[] @relation("CaseOwner")
+  caseEvents     CaseStageHistory[] @relation("CaseActor")
   
   @@index([orgId])
   @@index([email])
@@ -295,6 +298,7 @@ model Client {
   organization      Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
   householdMembers  HouseholdMember[]
   vouchers          Voucher[]
+  cases             Case[]
   
   @@index([orgId])
   @@index([pipelineStage])
@@ -378,6 +382,8 @@ model Voucher {
   
   // Relations
   client                Client              @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  cases                 Case[]
+  fitEvaluations        FitEvaluation[]
   
   @@index([clientId])
   @@index([program])
@@ -509,6 +515,8 @@ model Unit {
   
   // Relations
   property           Property   @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  cases              Case[]
+  fitEvaluations     FitEvaluation[]
   
   @@index([propertyId])
   @@index([bedrooms])
@@ -541,7 +549,7 @@ model UtilityAllowanceSchedule {
   tableJson        Json     @map("table_json")
   
   sourceDocumentId String?  @map("source_document_id")
-  
+  organization     Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
   createdAt        DateTime @default(now()) @map("created_at")
   
   @@index([orgId])
@@ -550,5 +558,115 @@ model UtilityAllowanceSchedule {
 }
 
 // ============================================================================
-// Update Organization relations
+// Phase 3: Case workflow and objective fit snapshots
 // ============================================================================
+
+enum CaseStage {
+  INQUIRY
+  INTAKE
+  VOUCHER_REVIEW
+  DOCUMENT_COLLECT
+  READY
+  MATCHED
+  APPLICATION
+  PRECLEARANCE
+  LEASE_PREP
+  LEASE_REVIEW
+  INSPECTION
+  MOVE_IN_PREP
+  PLACED
+  INELIGIBLE
+  WITHDRAWN
+}
+
+model Case {
+  id             String @id @default(cuid())
+  orgId          String @map("org_id")
+  clientId       String @map("client_id")
+  ownerUserId    String @map("owner_user_id")
+  voucherId      String? @map("voucher_id")
+  unitId         String? @map("unit_id")
+  stage          CaseStage @default(INQUIRY)
+  stageEnteredAt DateTime @default(now()) @map("stage_entered_at")
+  stalled        Boolean @default(false)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  client         Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  owner          User @relation("CaseOwner", fields: [ownerUserId], references: [id], onDelete: Restrict)
+  voucher        Voucher? @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  unit           Unit? @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  history        CaseStageHistory[]
+  fitEvaluations FitEvaluation[]
+  checklist      ChecklistItem[]
+  @@index([orgId, stage])
+  @@index([orgId, clientId])
+  @@index([ownerUserId])
+  @@map("cases")
+}
+
+model CaseStageHistory {
+  id             String @id @default(cuid())
+  caseId         String @map("case_id")
+  fromStage      CaseStage @map("from_stage")
+  toStage        CaseStage @map("to_stage")
+  action         String
+  actorUserId    String @map("actor_user_id")
+  fromOwnerId    String @map("from_owner_id")
+  toOwnerId      String @map("to_owner_id")
+  reason         String?
+  override       Boolean @default(false)
+  occurredAt     DateTime @default(now()) @map("occurred_at")
+  durationInPrevStageSeconds Int @map("duration_in_prev_stage_seconds")
+  case           Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  actor          User @relation("CaseActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  @@index([caseId, occurredAt])
+  @@map("case_stage_history")
+}
+
+enum FitResult {
+  ELIGIBLE
+  INELIGIBLE
+  NEEDS_REVIEW
+}
+
+model FitEvaluation {
+  id                  String @id @default(cuid())
+  caseId              String @map("case_id")
+  unitId              String @map("unit_id")
+  voucherId           String @map("voucher_id")
+  result              FitResult
+  reasons             Json
+  ruleVersion         String @map("rule_version")
+  allowanceScheduleId String? @map("allowance_schedule_id")
+  snapshot             Json
+  computedAt          DateTime @default(now()) @map("computed_at")
+  computedBy          String @map("computed_by")
+  case                Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  unit                Unit @relation(fields: [unitId], references: [id], onDelete: Restrict)
+  voucher             Voucher @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  @@index([caseId, computedAt])
+  @@map("fit_evaluations")
+}
+
+enum ChecklistState {
+  MISSING
+  UPLOADED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  EXPIRED
+  WAIVED
+}
+
+model ChecklistItem {
+  id            String @id @default(cuid())
+  caseId        String @map("case_id")
+  code          String
+  blockingStage CaseStage @map("blocking_stage")
+  state         ChecklistState @default(MISSING)
+  expiresAt     DateTime? @map("expires_at")
+  case          Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  @@unique([caseId, code])
+  @@map("checklist_items")
+}

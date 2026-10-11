@@ -30,7 +30,7 @@ export class UsersController {
    */
   @Get('me')
   async getCurrentUser(@CurrentUser() user: any) {
-    const fullUser = await this.usersService.findById(user.id);
+    const fullUser = await this.usersService.findById(user.id, user.orgId);
     return {
       id: fullUser?.id,
       email: fullUser?.email,
@@ -72,8 +72,8 @@ export class UsersController {
    */
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.BROKER)
-  async getUser(@Param('id') id: string) {
-    const user = await this.usersService.findById(id);
+  async getUser(@Param('id') id: string, @CurrentUser() actor: { orgId: string }) {
+    const user = await this.usersService.findById(id, actor.orgId);
     if (!user) {
       return null;
     }
@@ -121,8 +121,9 @@ export class UsersController {
   async updateUser(
     @Param('id') id: string,
     @Body() dto: { name?: string; role?: UserRole },
+    @CurrentUser() actor: { orgId: string },
   ) {
-    const updated = await this.usersService.update(id, dto);
+    const updated = await this.usersService.update(id, actor.orgId, dto);
     
     return {
       id: updated.id,
@@ -140,9 +141,9 @@ export class UsersController {
   @Roles(UserRole.ADMIN)
   async deactivateUser(
     @Param('id') id: string,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: { id: string; orgId: string },
   ) {
-    const deactivated = await this.usersService.deactivate(id, user.id);
+    const deactivated = await this.usersService.deactivate(id, user.orgId, user.id);
     
     return {
       id: deactivated.id,

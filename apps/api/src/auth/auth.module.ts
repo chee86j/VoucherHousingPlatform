@@ -17,6 +17,7 @@ import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { AuthGuard } from './guards/auth.guard';
 import { RolesGuard } from './guards/roles.guard';
+import { jwtSecret } from './jwt-secret';
 import { AuditService } from './audit.service';
 
 @Global()
@@ -27,7 +28,7 @@ import { AuditService } from './audit.service';
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
-        secret: config.get<string>('JWT_SECRET') || 'dev-secret-change-in-production',
+        secret: jwtSecret(config),
         signOptions: {
           expiresIn: config.get<string>('JWT_EXPIRES_IN') || '15m',
         },

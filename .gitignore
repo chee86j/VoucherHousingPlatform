@@ -5,6 +5,8 @@ node_modules/
 # Build outputs
 dist/
 .next/
+*.tsbuildinfo
+apps/web/next-env.d.ts
 out/
 .turbo/
 

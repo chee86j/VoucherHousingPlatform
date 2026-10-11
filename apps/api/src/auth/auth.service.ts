@@ -16,8 +16,9 @@ import { authenticator } from 'otplib';
 import { prisma, User, UserRole, UserStatus } from '@vhp/database';
 import { AuditService } from './audit.service';
 
-interface LoginResult {
+export interface LoginResult {
   requiresMfa: boolean;
+  requiresEnrollment?: boolean;
   mfaToken?: string;
   accessToken?: string;
   user?: UserProfile;
@@ -104,19 +105,13 @@ export class AuthService {
     });
 
     // Check if MFA is required
-    if (user.mfaEnrolled && user.mfaSecret) {
-      // Return a temporary MFA token
+    if (user.mfaEnrolled || this.requiresStaffMfa(user)) {
+      const requiresEnrollment = !user.mfaEnrolled;
       const mfaToken = this.jwtService.sign(
-        { sub: user.id, mfaPending: true },
+        { sub: user.id, purpose: requiresEnrollment ? 'mfa-enroll' : 'mfa-verify' },
         { expiresIn: '5m' },
       );
-
-      return { requiresMfa: true, mfaToken };
-    }
-
-    // Staff without MFA should be warned (but allowed in dev)
-    if (this.staffRoles.includes(user.role) && !user.mfaEnrolled) {
-      this.logger.warn(`Staff user ${user.email} logged in without MFA`);
+      return { requiresMfa: true, requiresEnrollment, mfaToken };
     }
 
     // Issue access token
@@ -131,23 +126,13 @@ export class AuthService {
     totpCode: string,
     metadata: { ip?: string; userAgent?: string },
   ): Promise<LoginResult> {
-    // Verify MFA token
-    let payload: { sub: string; mfaPending: boolean };
-    try {
-      payload = this.jwtService.verify(mfaToken);
-    } catch {
-      throw new UnauthorizedException('Invalid or expired MFA token');
-    }
-
-    if (!payload.mfaPending) {
-      throw new BadRequestException('Invalid MFA token');
-    }
+    const payload = this.verifyChallenge(mfaToken, 'mfa-verify');
 
     const user = await prisma.user.findUnique({
       where: { id: payload.sub },
     });
 
-    if (!user || !user.mfaSecret) {
+    if (!user || user.status !== UserStatus.ACTIVE || (user.lockedUntil && user.lockedUntil > new Date()) || !user.mfaEnrolled || !user.mfaSecret) {
       throw new UnauthorizedException('Invalid MFA configuration');
     }
 
@@ -184,7 +169,7 @@ export class AuthService {
       where: { id: userId },
     });
 
-    if (!user) {
+    if (!user || user.status !== UserStatus.ACTIVE || user.mfaEnrolled) {
       throw new BadRequestException('User not found');
     }
 
@@ -216,7 +201,7 @@ export class AuthService {
       where: { id: userId },
     });
 
-    if (!user || !user.mfaSecret) {
+    if (!user || user.status !== UserStatus.ACTIVE || user.mfaEnrolled || !user.mfaSecret) {
       throw new BadRequestException('MFA not configured');
     }
 
@@ -261,6 +246,37 @@ export class AuthService {
     });
   }
 
+  requiresStaffMfa(user: Pick<User, 'role'>): boolean {
+    return this.staffRoles.includes(user.role);
+  }
+
+  private verifyChallenge(token: string, purpose: 'mfa-verify' | 'mfa-enroll'): { sub: string } {
+    try {
+      const payload = this.jwtService.verify<{ sub?: string; purpose?: string }>(token);
+      if (typeof payload.sub === 'string' && payload.sub && payload.purpose === purpose) return { sub: payload.sub };
+    } catch { /* invalid or expired */ }
+    throw new UnauthorizedException('Invalid or expired MFA token');
+  }
+
+  async enrollWithChallenge(token: string) {
+    const { sub } = this.verifyChallenge(token, 'mfa-enroll');
+    const user = await prisma.user.findUnique({ where: { id: sub } });
+    if (!user || user.status !== UserStatus.ACTIVE || !this.requiresStaffMfa(user) || user.mfaEnrolled ||
+        (user.lockedUntil && user.lockedUntil > new Date())) throw new UnauthorizedException('MFA enrollment unavailable');
+    return this.generateMfaSecret(sub);
+  }
+
+  async confirmWithChallenge(token: string, code: string, metadata: { ip?: string; userAgent?: string }) {
+    const { sub } = this.verifyChallenge(token, 'mfa-enroll');
+    const user = await prisma.user.findUnique({ where: { id: sub } });
+    if (!user || user.status !== UserStatus.ACTIVE || !this.requiresStaffMfa(user) || user.mfaEnrolled ||
+        (user.lockedUntil && user.lockedUntil > new Date())) throw new UnauthorizedException('MFA enrollment unavailable');
+    await this.confirmMfaEnrollment(sub, code, metadata);
+    const enrolled = await prisma.user.findUnique({ where: { id: sub } });
+    if (!enrolled || !enrolled.mfaEnrolled) throw new UnauthorizedException('MFA enrollment failed');
+    return this.issueToken(enrolled, metadata);
+  }
+
   private async handleFailedLogin(
     user: User,
     metadata: { ip?: string; userAgent?: string },
@@ -300,7 +316,7 @@ export class AuthService {
       email: user.email,
       role: user.role,
       orgId: user.orgId,
-      mfaVerified: user.mfaEnrolled,
+      mfaVerified: true,
     };
 
     const accessToken = this.jwtService.sign(payload);

@@ -24,11 +24,11 @@ import {
   CreatePropertyDto, UpdatePropertyDto,
   CreateUnitDto, UpdateUnitDto,
 } from './dto/properties.dto';
-import { JwtAuthGuard } from '../auth/guards/auth.guard';
+import { AuthGuard } from '../auth/guards/auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
-import { UserRole, UnitStatus } from '@vhp/database';
+import { UserRole, UnitStatus, Unit } from '@vhp/database';
 
 interface AuthUser {
   id: string;
@@ -36,8 +36,8 @@ interface AuthUser {
   role: UserRole;
 }
 
-@Controller('api')
-@UseGuards(JwtAuthGuard, RolesGuard)
+@Controller()
+@UseGuards(AuthGuard, RolesGuard)
 export class PropertiesController {
   constructor(private readonly propertiesService: PropertiesService) {}
 
@@ -164,7 +164,7 @@ export class PropertiesController {
   async findUnit(
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
-  ) {
+  ): Promise<Unit> {
     return this.propertiesService.findUnit(id, user.orgId);
   }
 
@@ -174,7 +174,7 @@ export class PropertiesController {
     @CurrentUser() user: AuthUser,
     @Param('propertyId') propertyId: string,
     @Body() dto: CreateUnitDto,
-  ) {
+  ): Promise<Unit> {
     return this.propertiesService.createUnit(propertyId, user.orgId, dto);
   }
 
@@ -184,7 +184,7 @@ export class PropertiesController {
     @CurrentUser() user: AuthUser,
     @Param('id') id: string,
     @Body() dto: UpdateUnitDto,
-  ) {
+  ): Promise<Unit> {
     return this.propertiesService.updateUnit(id, user.orgId, dto);
   }
 }

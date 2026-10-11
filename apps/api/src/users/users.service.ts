@@ -24,10 +24,8 @@ interface UpdateUserDto {
 export class UsersService {
   constructor(private readonly authService: AuthService) {}
 
-  async findById(id: string): Promise<User | null> {
-    return prisma.user.findUnique({
-      where: { id },
-    });
+  async findById(id: string, orgId: string): Promise<User | null> {
+    return prisma.user.findFirst({ where: { id, orgId } });
   }
 
   async findByEmail(email: string): Promise<User | null> {
@@ -72,8 +70,8 @@ export class UsersService {
     });
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<User> {
-    const user = await this.findById(id);
+  async update(id: string, orgId: string, dto: UpdateUserDto): Promise<User> {
+    const user = await this.findById(id, orgId);
     if (!user) {
       throw new NotFoundException('User not found');
     }
@@ -88,8 +86,8 @@ export class UsersService {
     });
   }
 
-  async deactivate(id: string, deactivatedBy: string): Promise<User> {
-    const user = await this.findById(id);
+  async deactivate(id: string, orgId: string, deactivatedBy: string): Promise<User> {
+    const user = await this.findById(id, orgId);
     if (!user) {
       throw new NotFoundException('User not found');
     }

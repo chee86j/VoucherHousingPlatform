@@ -1,98 +1,51 @@
-/**
- * Auth Controller - Login, MFA, and session management endpoints
- */
-
-import {
-  Controller,
-  Post,
-  Body,
-  Req,
-  HttpCode,
-  HttpStatus,
-  UseGuards,
-  Get,
-} from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, HttpStatus, Post, Req, UseGuards } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { AuthGuard } from './guards/auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
-import { AuditAction } from '../common/decorators/audit.decorator';
-import { LoginDto, MfaVerifyDto, MfaEnrollDto } from './dto/auth.dto';
+import { Public } from './decorators/public.decorator';
+import { LoginDto, MfaVerifyDto, MfaBootstrapDto, MfaBootstrapConfirmDto } from './dto/auth.dto';
+
+type Profile = { id: string; email: string; name: string; role: string; orgId: string; mfaEnrolled: boolean };
 
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
-  /**
-   * Login with email and password
-   * Returns either an access token or MFA challenge
-   */
+  @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @Throttle({ short: { limit: 5, ttl: 60000 } }) // 5 attempts per minute
-  @AuditAction('LOGIN')
-  async login(@Body() dto: LoginDto, @Req() request: Request) {
-    return this.authService.login(dto.email, dto.password, {
-      ip: request.ip,
-      userAgent: request.headers['user-agent'],
-    });
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  login(@Body() dto: LoginDto, @Req() request: Request) {
+    return this.authService.login(dto.email, dto.password, { ip: request.ip, userAgent: request.headers['user-agent'] });
   }
 
-  /**
-   * Complete MFA verification
-   */
+  @Public()
   @Post('mfa/verify')
   @HttpCode(HttpStatus.OK)
   @Throttle({ short: { limit: 5, ttl: 60000 } })
-  @AuditAction('MFA_VERIFIED')
-  async verifyMfa(@Body() dto: MfaVerifyDto, @Req() request: Request) {
-    return this.authService.verifyMfa(dto.mfaToken, dto.totpCode, {
-      ip: request.ip,
-      userAgent: request.headers['user-agent'],
-    });
+  verifyMfa(@Body() dto: MfaVerifyDto, @Req() request: Request) {
+    return this.authService.verifyMfa(dto.mfaToken, dto.totpCode, { ip: request.ip, userAgent: request.headers['user-agent'] });
   }
 
-  /**
-   * Start MFA enrollment (authenticated users only)
-   */
-  @Post('mfa/enroll')
-  @UseGuards(AuthGuard)
-  @AuditAction('MFA_ENROLL_START')
-  async enrollMfa(@CurrentUser() user: { id: string }) {
-    return this.authService.generateMfaSecret(user.id);
+  @Public()
+  @Post('mfa/bootstrap')
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  bootstrap(@Body() dto: MfaBootstrapDto) {
+    return this.authService.enrollWithChallenge(dto.mfaToken);
   }
 
-  /**
-   * Confirm MFA enrollment with TOTP code
-   */
-  @Post('mfa/confirm')
-  @UseGuards(AuthGuard)
-  @AuditAction('MFA_ENROLLED')
-  async confirmMfa(
-    @Body() dto: MfaEnrollDto,
-    @CurrentUser() user: { id: string },
-    @Req() request: Request,
-  ) {
-    await this.authService.confirmMfaEnrollment(user.id, dto.totpCode, {
-      ip: request.ip,
-    });
-    return { success: true };
+  @Public()
+  @Post('mfa/bootstrap/confirm')
+  @Throttle({ short: { limit: 5, ttl: 60000 } })
+  bootstrapConfirm(@Body() dto: MfaBootstrapConfirmDto, @Req() request: Request) {
+    return this.authService.confirmWithChallenge(dto.mfaToken, dto.totpCode, { ip: request.ip, userAgent: request.headers['user-agent'] });
   }
 
-  /**
-   * Get current user profile
-   */
   @Get('me')
   @UseGuards(AuthGuard)
-  async me(@CurrentUser() user: any) {
-    return {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-      orgId: user.orgId,
-      mfaEnrolled: user.mfaEnrolled,
-    };
+  me(@CurrentUser() user: Profile) {
+    return { id: user.id, email: user.email, name: user.name, role: user.role, orgId: user.orgId, mfaEnrolled: user.mfaEnrolled };
   }
 }

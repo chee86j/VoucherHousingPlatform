@@ -18,6 +18,8 @@ export class AuthGuard extends PassportAuthGuard('jwt') {
   }
 
   canActivate(context: ExecutionContext) {
+    const request = context.switchToHttp().getRequest();
+    if (request.method === 'GET' && ['/health', '/health/live', '/health/ready'].includes(request.path)) return true;
     // Check for @Public() decorator
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
       context.getHandler(),

@@ -12,19 +12,20 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { Reflector } from '@nestjs/core';
+import { AuthGuard } from './auth/guards/auth.guard';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  app.useGlobalGuards(new AuthGuard(app.get(Reflector)));
 
   // Security headers (§7)
   app.use(helmet());
 
   // CORS - explicit allowlist, never wildcard in production
-  const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || [];
+  const allowedOrigins = process.env.CORS_ORIGINS?.split(',').map((origin) => origin.trim()).filter(Boolean) || [];
   app.enableCors({
-    origin: process.env.NODE_ENV === 'production' 
-      ? allowedOrigins 
-      : true, // Allow all in development
+    origin: allowedOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],

@@ -16,6 +16,17 @@
     "clean": "pnpm -r run clean && rm -rf node_modules"
   },
   "packageManager": "pnpm@9.15.0",
+  "pnpm": {
+    "overrides": {
+      "glob@^10": "^10.5.0",
+      "multer": "^2.3.0",
+      "picomatch@^4": "^4.0.4",
+      "lodash@^4": "^4.18.0",
+      "tmp": "^0.2.6",
+      "postcss@^8": "^8.5.18",
+      "deepmerge-ts": "^8.0.2"
+    }
+  },
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=9.0.0"

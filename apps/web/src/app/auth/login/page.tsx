@@ -1,10 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -29,16 +27,12 @@ export default function LoginPage() {
       }
 
       if (data.requiresMfa) {
-        // TODO: Redirect to MFA page
-        alert('MFA required - not implemented yet');
+        setError('MFA enrollment and verification require an approved server-side session flow. Sign-in is unavailable in this prototype.');
         return;
       }
-
-      // Store token and redirect
-      localStorage.setItem('accessToken', data.accessToken);
-      router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.message);
+      setError('Browser session handling is not yet implemented. Sign-in is unavailable in this prototype.');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
       setLoading(false);
     }

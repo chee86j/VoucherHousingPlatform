@@ -31,3 +31,14 @@ export class MfaEnrollDto {
   @Matches(/^\d{6}$/, { message: 'TOTP code must be 6 digits' })
   totpCode: string;
 }
+
+export class MfaBootstrapDto {
+  @IsString()
+  mfaToken: string;
+}
+
+export class MfaBootstrapConfirmDto extends MfaBootstrapDto {
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'TOTP code must be 6 digits' })
+  totpCode: string;
+}
