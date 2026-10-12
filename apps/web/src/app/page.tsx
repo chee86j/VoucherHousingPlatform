@@ -22,7 +22,7 @@ export default function Home() {
           </Link>
           
           <Link
-            href="/docs"
+            href="https://github.com/chee86j/VoucherHousingPlatform/tree/main/docs"
             className="text-sm font-semibold leading-6 text-slate-900"
           >
             Documentation <span aria-hidden="true">→</span>
@@ -31,7 +31,7 @@ export default function Home() {
       </div>
       
       <footer className="absolute bottom-8 text-sm text-slate-500">
-        Phase 1 Foundation — v0.1.0
+        Broker operations prototype — not for real client data
       </footer>
     </main>
   );
