@@ -19,6 +19,7 @@ import { ClientsModule } from './clients/clients.module';
 import { PropertiesModule } from './properties/properties.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { ShowingsModule } from './showings/showings.module';
+import { DocumentsModule } from './documents/documents.module';
 import { AuditInterceptor } from './common/interceptors/audit.interceptor';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 
@@ -61,6 +62,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
     PropertiesModule,
     WorkflowModule,
     ShowingsModule,
+    DocumentsModule,
   ],
   providers: [
     // Global rate limiting guard

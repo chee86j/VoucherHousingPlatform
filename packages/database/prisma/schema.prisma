@@ -38,6 +38,7 @@ model Organization {
   cases Case[]
   showingSessions ShowingSession[]
   followUpTasks FollowUpTask[]
+  documents Document[]
 
   @@map("organizations")
 }
@@ -95,6 +96,9 @@ model User {
   showingEvents ShowingEvent[] @relation("ShowingEventActor")
   showingTasks FollowUpTask[] @relation("TaskOwner")
   createdShowingTasks FollowUpTask[] @relation("TaskCreator")
+  uploadedDocuments Document[] @relation("DocumentUploader")
+  reviewedDocuments Document[] @relation("DocumentReviewer")
+  documentEvents DocumentEvent[] @relation("DocumentEventActor")
   
   @@index([orgId])
   @@index([email])
@@ -305,6 +309,7 @@ model Client {
   vouchers          Voucher[]
   cases             Case[]
   showingParticipants ShowingParticipant[]
+  documents Document[]
   
   @@index([orgId])
   @@index([pipelineStage])
@@ -607,6 +612,7 @@ model Case {
   fitEvaluations FitEvaluation[]
   checklist      ChecklistItem[]
   followUpTasks FollowUpTask[]
+  documents Document[]
   @@index([orgId, stage])
   @@index([orgId, clientId])
   @@index([ownerUserId])
@@ -675,8 +681,81 @@ model ChecklistItem {
   state         ChecklistState @default(MISSING)
   expiresAt     DateTime? @map("expires_at")
   case          Case @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  documents     Document[]
   @@unique([caseId, code])
   @@map("checklist_items")
+}
+
+// Phase 6: document metadata and review workflow. Binary storage is intentionally deferred
+// to private object storage with AV scanning and signed URL minting; never put document bytes in Postgres.
+enum DocumentStatus {
+  UPLOADED
+  UNDER_REVIEW
+  VERIFIED
+  REJECTED
+  EXPIRED
+}
+
+enum DocumentVisibility {
+  INTERNAL_ONLY
+  LANDLORD_SAFE
+}
+
+enum DocumentStorageStatus {
+  METADATA_ONLY
+  STORED_QUARANTINED
+  STORED_AVAILABLE
+  DELETED
+}
+
+model Document {
+  id String @id @default(cuid())
+  orgId String @map("org_id")
+  clientId String @map("client_id")
+  caseId String? @map("case_id")
+  checklistItemId String? @map("checklist_item_id")
+  uploadedById String @map("uploaded_by_id")
+  reviewedById String? @map("reviewed_by_id")
+  fileName String @map("file_name")
+  mimeType String @map("mime_type")
+  sizeBytes Int @map("size_bytes")
+  sha256 String
+  storageKey String? @map("storage_key")
+  storageStatus DocumentStorageStatus @default(METADATA_ONLY) @map("storage_status")
+  status DocumentStatus @default(UPLOADED)
+  visibility DocumentVisibility @default(INTERNAL_ONLY)
+  reviewNote String? @map("review_note")
+  reviewedAt DateTime? @map("reviewed_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  organization Organization @relation(fields: [orgId], references: [id], onDelete: Restrict)
+  client Client @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  case Case? @relation(fields: [caseId], references: [id], onDelete: Restrict)
+  checklistItem ChecklistItem? @relation(fields: [checklistItemId], references: [id], onDelete: Restrict)
+  uploadedBy User @relation("DocumentUploader", fields: [uploadedById], references: [id], onDelete: Restrict)
+  reviewedBy User? @relation("DocumentReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  events DocumentEvent[]
+  @@index([orgId, status, createdAt])
+  @@index([clientId, createdAt])
+  @@index([caseId, createdAt])
+  @@index([checklistItemId])
+  @@unique([orgId, sha256])
+  @@map("documents")
+}
+
+model DocumentEvent {
+  id String @id @default(cuid())
+  documentId String @map("document_id")
+  actorUserId String @map("actor_user_id")
+  action String
+  fromStatus String? @map("from_status")
+  toStatus String? @map("to_status")
+  note String?
+  occurredAt DateTime @default(now()) @map("occurred_at")
+  document Document @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  actor User @relation("DocumentEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  @@index([documentId, occurredAt])
+  @@map("document_events")
 }
 
 // Phase 4: internal scheduling only; no applicant score, ranking or selection.

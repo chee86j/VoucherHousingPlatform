@@ -107,7 +107,7 @@ The MVP is being built in phases:
 3. 🟡 **Workflow Engine** — Case FSM, objective fit snapshots and checklist schema; document handling remains pending
 4. 🟡 **Showings** — Broker-side grouped sessions, attendance and manual follow-up tasks API; no scoring, ranking or automatic unit selection (counsel gate)
 5. 🟡 **Broker Console** — Protected dashboard, early-stage case drag/button actions, grouped showings and follow-up; later transitions and pilot controls pending
-6. 🔲 **Documents & Admin** — Upload, notifications, admin tools
+6. 🟡 **Documents & Admin** — Document metadata/review API and checklist updates; binary storage, signed URLs, notifications and admin UI pending
 
 ## License
 
