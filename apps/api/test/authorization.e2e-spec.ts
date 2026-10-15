@@ -7,9 +7,20 @@
  * This is the "one small test" for non-trivial logic.
  */
 
+import { existsSync, readFileSync } from 'fs';
+import { resolve } from 'path';
+
+const localEnvPath = resolve(__dirname, '../../../.env.local');
+if (existsSync(localEnvPath)) {
+  for (const line of readFileSync(localEnvPath, 'utf8').split(/\r?\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (match && !process.env[match[1]]) process.env[match[1]] = match[2].replace(/^"|"$/g, '');
+  }
+}
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication, HttpStatus } from '@nestjs/common';
-import * as request from 'supertest';
+import request from 'supertest';
 import { AppModule } from '../src/app.module';
 import { prisma } from '@vhp/database';
 import * as argon2 from 'argon2';
@@ -24,6 +35,7 @@ describe('Authorization Matrix (e2e)', () => {
   let tenantToken: string;
   let testOrgId: string;
   let testClientId: string;
+  const testRunId = Date.now().toString(36);
 
   // Helper to create JWT for a user
   const makeToken = (userId: string, orgId: string, role: string) => {
@@ -35,16 +47,21 @@ describe('Authorization Matrix (e2e)', () => {
   };
 
   beforeAll(async () => {
+    process.env.JWT_SECRET = 'abcdefghijklmnopqrstuvwxyz1234567890abcdef';
+    process.env.JWT_EXPIRES_IN = '1h';
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
 
     app = moduleFixture.createNestApplication();
+    app.setGlobalPrefix('api', {
+      exclude: ['health', 'health/ready', 'health/live'],
+    });
     await app.init();
 
     // Create test organization
     const org = await prisma.organization.create({
-      data: { name: 'Test Org', slug: 'test-org-auth-matrix', type: 'BROKER' },
+      data: { name: 'Test Org', slug: `test-org-auth-matrix-${testRunId}`, type: 'BROKER' },
     });
     testOrgId = org.id;
 
@@ -52,19 +69,19 @@ describe('Authorization Matrix (e2e)', () => {
 
     // Create users with different roles
     const admin = await prisma.user.create({
-      data: { orgId: testOrgId, email: 'admin@test.local', name: 'Admin', passwordHash, role: 'ADMIN', status: 'ACTIVE', mfaEnrolled: true },
+      data: { orgId: testOrgId, email: `admin-${testRunId}@test.local`, name: 'Admin', passwordHash, role: 'ADMIN', status: 'ACTIVE', mfaEnrolled: true, mfaSecret: 'TESTSECRET' },
     });
     const broker = await prisma.user.create({
-      data: { orgId: testOrgId, email: 'broker@test.local', name: 'Broker', passwordHash, role: 'BROKER', status: 'ACTIVE', mfaEnrolled: true },
+      data: { orgId: testOrgId, email: `broker-${testRunId}@test.local`, name: 'Broker', passwordHash, role: 'BROKER', status: 'ACTIVE', mfaEnrolled: true, mfaSecret: 'TESTSECRET' },
     });
     const assistant = await prisma.user.create({
-      data: { orgId: testOrgId, email: 'assistant@test.local', name: 'Assistant', passwordHash, role: 'ASSISTANT', status: 'ACTIVE', mfaEnrolled: true },
+      data: { orgId: testOrgId, email: `assistant-${testRunId}@test.local`, name: 'Assistant', passwordHash, role: 'ASSISTANT', status: 'ACTIVE', mfaEnrolled: true, mfaSecret: 'TESTSECRET' },
     });
     const auditor = await prisma.user.create({
-      data: { orgId: testOrgId, email: 'auditor@test.local', name: 'Auditor', passwordHash, role: 'AUDITOR', status: 'ACTIVE', mfaEnrolled: true },
+      data: { orgId: testOrgId, email: `auditor-${testRunId}@test.local`, name: 'Auditor', passwordHash, role: 'AUDITOR', status: 'ACTIVE', mfaEnrolled: true, mfaSecret: 'TESTSECRET' },
     });
     const tenant = await prisma.user.create({
-      data: { orgId: testOrgId, email: 'tenant@test.local', name: 'Tenant', passwordHash, role: 'TENANT', status: 'ACTIVE' },
+      data: { orgId: testOrgId, email: `tenant-${testRunId}@test.local`, name: 'Tenant', passwordHash, role: 'TENANT', status: 'ACTIVE' },
     });
 
     adminToken = makeToken(admin.id, testOrgId, 'ADMIN');
@@ -82,10 +99,13 @@ describe('Authorization Matrix (e2e)', () => {
 
   afterAll(async () => {
     // Cleanup
-    await prisma.client.deleteMany({ where: { orgId: testOrgId } });
-    await prisma.user.deleteMany({ where: { orgId: testOrgId } });
-    await prisma.organization.delete({ where: { id: testOrgId } });
-    await app.close();
+    if (testOrgId) {
+      await prisma.client.deleteMany({ where: { orgId: testOrgId } });
+      await prisma.auditLog.deleteMany({ where: { orgId: testOrgId } });
+      await prisma.user.deleteMany({ where: { orgId: testOrgId } });
+      await prisma.organization.deleteMany({ where: { id: testOrgId } });
+    }
+    if (app) await app.close();
   });
 
   // =========================================================================
@@ -224,7 +244,7 @@ describe('Authorization Matrix (e2e)', () => {
     it('User cannot access clients from another org', async () => {
       // Create another org with a client
       const otherOrg = await prisma.organization.create({
-        data: { name: 'Other Org', slug: 'other-org-isolation', type: 'BROKER' },
+        data: { name: 'Other Org', slug: `other-org-isolation-${testRunId}`, type: 'BROKER' },
       });
       const otherClient = await prisma.client.create({
         data: { orgId: otherOrg.id, legalName: 'Other Org Client', pipelineStage: 'NEW_LEAD' },
