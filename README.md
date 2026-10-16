@@ -108,7 +108,8 @@ The MVP is being built in phases:
 4. 🟡 **Showings** — Broker-side grouped sessions, attendance and manual follow-up tasks API; no scoring, ranking or automatic unit selection (counsel gate)
 5. 🟡 **Broker Console** — Protected dashboard, early-stage case drag/button actions, grouped showings and follow-up; later transitions and pilot controls pending
 6. 🟡 **Documents & Admin** — Document metadata/review API and checklist updates; binary storage, signed URLs, notifications and admin UI pending
-7. 🟡 **Secure Document Storage Foundation** — Authenticated multipart upload, MIME/magic-byte validation, SHA-256 hashing and private quarantine storage; object storage, AV scanning, signed URLs and audited downloads pending
+7. 🟡 **Secure Document Storage Foundation** — Authenticated multipart upload, MIME/magic-byte validation, SHA-256 hashing and private quarantine storage; object storage, AV scanning and promotion workflow pending
+8. 🟡 **Private Document Access** — Server-authorized, rate-limited and audited byte reads for explicitly available, verified documents only; quarantine remains unreadable, and S3 adapter/scanning/signed URL support remain pending
 
 ## License
 

@@ -1,10 +1,11 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { ChecklistState, DocumentStatus, DocumentStorageStatus, prisma, Prisma } from '@vhp/database';
 import { RegisterDocumentDto, ReviewDocumentDto } from './documents.dto';
 import { DocumentStorageService } from './document-storage.service';
 
 export type DocumentActor = { id: string; orgId: string };
 export type RegisterDocumentInput = RegisterDocumentDto & { storageKey?: string };
+export type DownloadedDocument = { bytes: Buffer; fileName: string; mimeType: string };
 const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const maxBytes = 15 * 1024 * 1024;
 
@@ -50,6 +51,37 @@ export class DocumentsService {
     const doc = await prisma.document.findFirst({ where: { id, orgId: actor.orgId }, select: { ...documentSelect, events: { orderBy: { occurredAt: 'asc' } } } });
     if (!doc) throw new NotFoundException('Document not found');
     return doc;
+  }
+
+  async download(actor: DocumentActor, id: string): Promise<DownloadedDocument> {
+    const doc = await prisma.document.findFirst({
+      where: { id, orgId: actor.orgId },
+      select: { id: true, storageKey: true, storageStatus: true, status: true, fileName: true, mimeType: true },
+    });
+    if (!doc) throw new NotFoundException('Document not found');
+
+    // Phase 8 has no scanner/promoter. A future trusted scanner workflow must move
+    // a verified object to the available namespace and set STORED_AVAILABLE.
+    if (doc.storageStatus !== DocumentStorageStatus.STORED_AVAILABLE || doc.status !== DocumentStatus.VERIFIED || !doc.storageKey) {
+      await prisma.documentEvent.create({
+        data: { documentId: doc.id, actorUserId: actor.id, action: 'DOWNLOAD_DENIED_NOT_AVAILABLE' },
+      });
+      throw new ConflictException('Document is quarantined or not eligible for download');
+    }
+
+    let bytes: Buffer;
+    try {
+      bytes = await this.storage.readAvailable(actor.orgId, doc.storageKey);
+    } catch {
+      await prisma.documentEvent.create({
+        data: { documentId: doc.id, actorUserId: actor.id, action: 'DOWNLOAD_FAILED_STORAGE_UNAVAILABLE' },
+      });
+      throw new InternalServerErrorException('Document bytes are unavailable');
+    }
+
+    // Written before the controller releases bytes to the client.
+    await prisma.documentEvent.create({ data: { documentId: doc.id, actorUserId: actor.id, action: 'DOWNLOADED' } });
+    return { bytes, fileName: doc.fileName, mimeType: doc.mimeType };
   }
 
   async upload(actor: DocumentActor, file: Express.Multer.File, metadata: Omit<Pick<RegisterDocumentDto, 'clientId' | 'caseId' | 'checklistItemId' | 'fileName'>, 'fileName'> & { fileName?: string }) {

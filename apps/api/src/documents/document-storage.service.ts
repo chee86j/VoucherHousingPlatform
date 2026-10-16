@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'crypto';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { join, resolve } from 'path';
 
 const signatures: Record<string, Buffer> = {
@@ -16,8 +16,20 @@ export type QuarantinedUpload = {
   mimeType: string;
 };
 
-@Injectable()
-export class DocumentStorageService {
+/**
+ * Private storage boundary. Production object storage must implement this port
+ * (for example an S3-compatible adapter using private buckets and server-side
+ * credentials); browser clients never receive storage credentials or keys.
+ */
+export interface PrivateDocumentStorage {
+  quarantine(orgId: string, file: Express.Multer.File): Promise<QuarantinedUpload>;
+  readAvailable(orgId: string, storageKey: string): Promise<Buffer>;
+  remove(storageKey: string): Promise<void>;
+}
+
+export const DOCUMENT_STORAGE = Symbol('DOCUMENT_STORAGE');
+
+export class LocalPrivateDocumentStorage implements PrivateDocumentStorage {
   private readonly root = resolve(process.env.DOCUMENT_STORAGE_ROOT || '.data/documents');
 
   async quarantine(orgId: string, file: Express.Multer.File): Promise<QuarantinedUpload> {
@@ -44,7 +56,8 @@ export class DocumentStorageService {
     await rm(this.pathFor(storageKey), { force: true });
   }
 
-  async read(storageKey: string): Promise<Buffer> {
+  async readAvailable(orgId: string, storageKey: string): Promise<Buffer> {
+    this.assertAvailableKey(orgId, storageKey);
     return readFile(this.pathFor(storageKey));
   }
 
@@ -53,5 +66,28 @@ export class DocumentStorageService {
     const target = resolve(root, storageKey);
     if (target !== root && !target.startsWith(`${root}/`)) throw new Error('Invalid storage key');
     return target;
+  }
+
+  private assertAvailableKey(orgId: string, storageKey: string): void {
+    if (!/^[A-Za-z0-9_-]+$/.test(orgId) || !storageKey.startsWith(`${orgId}/available/`)) {
+      throw new Error('Document is not in an available storage location');
+    }
+  }
+}
+
+@Injectable()
+export class DocumentStorageService implements PrivateDocumentStorage {
+  constructor(@Inject(DOCUMENT_STORAGE) private readonly adapter: PrivateDocumentStorage) {}
+
+  quarantine(orgId: string, file: Express.Multer.File): Promise<QuarantinedUpload> {
+    return this.adapter.quarantine(orgId, file);
+  }
+
+  readAvailable(orgId: string, storageKey: string): Promise<Buffer> {
+    return this.adapter.readAvailable(orgId, storageKey);
+  }
+
+  remove(storageKey: string): Promise<void> {
+    return this.adapter.remove(storageKey);
   }
 }

@@ -7,8 +7,9 @@
  * This is the "one small test" for non-trivial logic.
  */
 
-import { existsSync, readFileSync } from 'fs';
-import { resolve } from 'path';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
+import { join, resolve } from 'path';
 
 const localEnvPath = resolve(__dirname, '../../../.env.local');
 if (existsSync(localEnvPath)) {
@@ -36,6 +37,7 @@ describe('Authorization Matrix (e2e)', () => {
   let testOrgId: string;
   let testClientId: string;
   let uploadedDocumentId: string | undefined;
+  const documentStorageRoot = join(tmpdir(), `vhp-documents-auth-${Date.now().toString(36)}`);
   const testRunId = Date.now().toString(36);
 
   // Helper to create JWT for a user
@@ -50,6 +52,7 @@ describe('Authorization Matrix (e2e)', () => {
   beforeAll(async () => {
     process.env.JWT_SECRET = 'abcdefghijklmnopqrstuvwxyz1234567890abcdef';
     process.env.JWT_EXPIRES_IN = '1h';
+    process.env.DOCUMENT_STORAGE_ROOT = documentStorageRoot;
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
     }).compile();
@@ -111,6 +114,8 @@ describe('Authorization Matrix (e2e)', () => {
       await prisma.organization.deleteMany({ where: { id: testOrgId } });
     }
     if (app) await app.close();
+    rmSync(documentStorageRoot, { recursive: true, force: true });
+    delete process.env.DOCUMENT_STORAGE_ROOT;
   });
 
   // =========================================================================
@@ -218,6 +223,46 @@ describe('Authorization Matrix (e2e)', () => {
       expect(response.body.mimeType).toBe('application/pdf');
       expect(response.body.storageStatus).toBe('STORED_QUARANTINED');
       expect(response.body.sha256).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    it('denies tenant download and keeps quarantined documents unreadable', async () => {
+      await request(app.getHttpServer())
+        .get(`/api/documents/${uploadedDocumentId}/content`)
+        .set('Authorization', `Bearer ${tenantToken}`)
+        .expect(HttpStatus.FORBIDDEN);
+
+      await request(app.getHttpServer())
+        .get(`/api/documents/${uploadedDocumentId}/content`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(HttpStatus.CONFLICT);
+
+      const deniedEvent = await prisma.documentEvent.findFirst({
+        where: { documentId: uploadedDocumentId!, action: 'DOWNLOAD_DENIED_NOT_AVAILABLE' },
+      });
+      expect(deniedEvent?.actorUserId).toBeTruthy();
+    });
+
+    it('serves only an explicitly available, verified document and records a download event', async () => {
+      const stored = await prisma.document.findUniqueOrThrow({ where: { id: uploadedDocumentId! } });
+      const availableKey = stored.storageKey!.replace('/quarantine/', '/available/');
+      mkdirSync(join(documentStorageRoot, testOrgId, 'available'), { recursive: true });
+      renameSync(join(documentStorageRoot, stored.storageKey!), join(documentStorageRoot, availableKey));
+      await prisma.document.update({
+        where: { id: uploadedDocumentId! },
+        data: { storageKey: availableKey, storageStatus: 'STORED_AVAILABLE', status: 'VERIFIED' },
+      });
+
+      const response = await request(app.getHttpServer())
+        .get(`/api/documents/${uploadedDocumentId}/content`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(HttpStatus.OK);
+
+      expect(response.headers['cache-control']).toContain('no-store');
+      expect(response.headers['content-disposition']).toContain('attachment');
+      expect(response.body).toEqual(Buffer.from('%PDF-authorization-test'));
+      await expect(prisma.documentEvent.findFirst({
+        where: { documentId: uploadedDocumentId, action: 'DOWNLOADED' },
+      })).resolves.toMatchObject({ actorUserId: expect.any(String) });
     });
   });
 

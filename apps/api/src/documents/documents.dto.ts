@@ -25,6 +25,11 @@ export class RegisterDocumentDto {
 
 }
 
+export class DocumentIdParamDto {
+  @IsString() @MaxLength(128) @Matches(/^c[a-z0-9]{24}$/)
+  id!: string;
+}
+
 export class ReviewDocumentDto {
   @IsEnum(DocumentStatus)
   status!: DocumentStatus;
