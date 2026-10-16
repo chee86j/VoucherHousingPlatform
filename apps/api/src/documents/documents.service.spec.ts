@@ -1,5 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
-import { checklistStateForReview, validateDocumentMetadata } from './documents.service';
+import { checklistStateForReview, normalizeDocumentFileName, validateDocumentMetadata } from './documents.service';
 
 describe('document metadata policy', () => {
   const base = { fileName: 'voucher.pdf', mimeType: 'application/pdf', sizeBytes: 1024, sha256: 'a'.repeat(64) };
@@ -20,6 +20,10 @@ describe('document metadata policy', () => {
     expect(() => validateDocumentMetadata({ ...base, sha256: 'not-a-digest' })).toThrow(BadRequestException);
   });
 
+  it('rejects path separators and control characters in display names', () => {
+    expect(() => normalizeDocumentFileName('../voucher.pdf')).toThrow(BadRequestException);
+    expect(() => normalizeDocumentFileName('voucher\u0000.pdf')).toThrow(BadRequestException);
+  });
   it('maps final review statuses to checklist states only', () => {
     expect(checklistStateForReview('VERIFIED')).toBe('VERIFIED');
     expect(checklistStateForReview('REJECTED')).toBe('REJECTED');

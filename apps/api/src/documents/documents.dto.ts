@@ -23,8 +23,6 @@ export class RegisterDocumentDto {
   @IsString() @Matches(/^[a-f0-9]{64}$/i)
   sha256!: string;
 
-  @IsOptional() @IsString() @MaxLength(240)
-  storageKey?: string;
 }
 
 export class ReviewDocumentDto {

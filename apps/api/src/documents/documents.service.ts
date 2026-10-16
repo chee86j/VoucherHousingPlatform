@@ -1,13 +1,27 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { ChecklistState, DocumentStatus, DocumentStorageStatus, prisma, Prisma } from '@vhp/database';
 import { RegisterDocumentDto, ReviewDocumentDto } from './documents.dto';
+import { DocumentStorageService } from './document-storage.service';
 
 export type DocumentActor = { id: string; orgId: string };
+export type RegisterDocumentInput = RegisterDocumentDto & { storageKey?: string };
 const allowedMimeTypes = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const maxBytes = 15 * 1024 * 1024;
 
+export function normalizeDocumentFileName(fileName: string): string {
+  const normalized = fileName.normalize('NFKC').trim();
+  const hasUnsafeCharacter = Array.from(normalized).some((character) => {
+    const code = character.codePointAt(0) || 0;
+    return code < 0x20 || code === 0x7f || character === '\\' || character === '/' || (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
+  });
+  if (!normalized || normalized.length > 180 || hasUnsafeCharacter) {
+    throw new BadRequestException('File name contains invalid characters');
+  }
+  return normalized;
+}
+
 export function validateDocumentMetadata(dto: Pick<RegisterDocumentDto, 'fileName' | 'mimeType' | 'sizeBytes' | 'sha256'>) {
-  if (!dto.fileName?.trim()) throw new BadRequestException('File name is required');
+  normalizeDocumentFileName(dto.fileName);
   if (!allowedMimeTypes.has(dto.mimeType)) throw new BadRequestException('Only PDF, JPEG and PNG documents are accepted');
   if (!Number.isInteger(dto.sizeBytes) || dto.sizeBytes < 1 || dto.sizeBytes > maxBytes) throw new BadRequestException('Document must be between 1 byte and 15 MB');
   if (!/^[a-f0-9]{64}$/i.test(dto.sha256)) throw new BadRequestException('sha256 must be a 64 character hex digest');
@@ -21,6 +35,8 @@ export function checklistStateForReview(status: DocumentStatus): ChecklistState 
 
 @Injectable()
 export class DocumentsService {
+  constructor(private readonly storage: DocumentStorageService) {}
+
   list(actor: DocumentActor) {
     return prisma.document.findMany({
       where: { orgId: actor.orgId },
@@ -36,7 +52,39 @@ export class DocumentsService {
     return doc;
   }
 
-  async register(actor: DocumentActor, dto: RegisterDocumentDto) {
+  async upload(actor: DocumentActor, file: Express.Multer.File, metadata: Omit<Pick<RegisterDocumentDto, 'clientId' | 'caseId' | 'checklistItemId' | 'fileName'>, 'fileName'> & { fileName?: string }) {
+    if (!file) throw new BadRequestException('A document file is required');
+    if (file.size < 1 || file.size > maxBytes) throw new BadRequestException('Document must be between 1 byte and 15 MB');
+    if (!allowedMimeTypes.has(file.mimetype)) throw new BadRequestException('Only PDF, JPEG and PNG documents are accepted');
+    const fileName = normalizeDocumentFileName(metadata.fileName || file.originalname);
+
+    let stored: Awaited<ReturnType<DocumentStorageService['quarantine']>>;
+    try {
+      stored = await this.storage.quarantine(actor.orgId, file);
+    } catch (error) {
+      throw new BadRequestException(error instanceof Error ? error.message : 'Document could not be stored');
+    }
+
+    try {
+      return await this.register(actor, {
+        ...metadata,
+        fileName,
+        mimeType: stored.mimeType,
+        sizeBytes: stored.sizeBytes,
+        sha256: stored.sha256,
+        storageKey: stored.storageKey,
+      });
+    } catch (error) {
+      try {
+        await this.storage.remove(stored.storageKey);
+      } catch {
+        // Preserve the registration error; reconciliation will handle orphan cleanup.
+      }
+      throw error;
+    }
+  }
+
+  async register(actor: DocumentActor, dto: RegisterDocumentInput) {
     validateDocumentMetadata(dto);
     return prisma.$transaction(async tx => {
       const [client, record, checklist] = await Promise.all([

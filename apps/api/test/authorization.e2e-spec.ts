@@ -35,6 +35,7 @@ describe('Authorization Matrix (e2e)', () => {
   let tenantToken: string;
   let testOrgId: string;
   let testClientId: string;
+  let uploadedDocumentId: string | undefined;
   const testRunId = Date.now().toString(36);
 
   // Helper to create JWT for a user
@@ -100,6 +101,10 @@ describe('Authorization Matrix (e2e)', () => {
   afterAll(async () => {
     // Cleanup
     if (testOrgId) {
+      if (uploadedDocumentId) {
+        await prisma.documentEvent.deleteMany({ where: { documentId: uploadedDocumentId } });
+        await prisma.document.delete({ where: { id: uploadedDocumentId } });
+      }
       await prisma.client.deleteMany({ where: { orgId: testOrgId } });
       await prisma.auditLog.deleteMany({ where: { orgId: testOrgId } });
       await prisma.user.deleteMany({ where: { orgId: testOrgId } });
@@ -194,6 +199,25 @@ describe('Authorization Matrix (e2e)', () => {
         .set('Authorization', `Bearer ${tenantToken}`)
         .send({ legalName: 'New Client Tenant' })
         .expect(HttpStatus.FORBIDDEN);
+    });
+  });
+
+  describe('POST /api/documents/upload', () => {
+    it('stores a valid PDF in quarantine and registers metadata', async () => {
+      const response = await request(app.getHttpServer())
+        .post('/api/documents/upload')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .field('clientId', testClientId)
+        .attach('file', Buffer.from('%PDF-authorization-test'), {
+          filename: 'authorization-test.pdf',
+          contentType: 'application/pdf',
+        })
+        .expect(HttpStatus.CREATED);
+
+      uploadedDocumentId = response.body.id;
+      expect(response.body.mimeType).toBe('application/pdf');
+      expect(response.body.storageStatus).toBe('STORED_QUARANTINED');
+      expect(response.body.sha256).toMatch(/^[a-f0-9]{64}$/);
     });
   });
 
