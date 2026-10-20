@@ -1,116 +1,118 @@
 # VoucherHousingPlatform
 
-Broker operations platform for voucher housing placements. Organizes clients, matches 3BR+ properties, and manages grouped showings for voucher-based tenant placement.
+An early-stage broker operations platform for voucher housing placements. It supports staff workflows for clients, voucher eligibility, properties and units, cases, grouped showings, follow-up tasks, and controlled document handling.
 
-## Architecture
+> **Prototype only — do not use with real client data.** The application handles highly sensitive PII. Its current local document storage, incomplete production security controls, and outstanding integration work make it unsuitable for deployment or pilot use.
 
-This is a monorepo using pnpm workspaces:
+## What is implemented
+
+- **Staff authentication:** email/password sign-in, account lockout, TOTP MFA enrollment/verification, JWTs, role guards, rate limits, Helmet, and an explicit CORS allowlist.
+- **Multi-tenant data model:** organizations, staff roles, clients, household members, vouchers, landlords, properties, and units.
+- **Case workflow:** a guarded case state machine, evidence-aware early transitions, checklist items, and objective bedroom/rent fit evaluations. The fit check does not score or rank applicants and sends unresolved utility responsibility to manual review.
+- **Showings:** internal grouped showing sessions, participants, attendance status, cancellation, overlap protection, and follow-up tasks.
+- **Broker console:** a server-rendered Next.js console for staff, with minimal operational data sent to the browser and a narrow same-origin mutation proxy.
+- **Documents:** PDF/JPEG/PNG metadata, review workflow, SHA-256 duplicate prevention, 15 MB upload limit, magic-byte validation, per-organization local quarantine, and controlled byte reads for verified documents in an available-storage namespace.
+- **Audit/history:** request-level audit interception plus transactional case, showing, and document event histories.
+
+The document access endpoint is intentionally fail-closed: uploaded files remain quarantined and cannot be downloaded until an external, trusted promotion process marks them both `VERIFIED` and `STORED_AVAILABLE`. No such scanning or promotion process is implemented yet.
+
+## Repository layout
 
 ```
 apps/
-  api/          # NestJS backend (auth, workflow, audit)
-  web/          # Next.js 15 frontend (broker console)
+  api/          # NestJS API
+  web/          # Next.js 15 staff console
 packages/
-  database/     # Prisma schema and client
-  shared/       # Shared TypeScript types
-docs/           # Architecture and product documentation
+  database/     # Prisma schema, migrations, seed script, client
+  shared/       # Shared TypeScript exports
+docs/           # Product, architecture, and phase-limit documents
 ```
 
-## Quick Start
-
-### Prerequisites
+## Requirements
 
 - Node.js 20+
-- pnpm 9+
-- Docker (for Postgres/Redis)
+- pnpm 9+ (the repository pins pnpm 9.15.0)
+- Docker Desktop or another Docker-compatible runtime for PostgreSQL and Redis
 
-### Development Setup
+## Local setup
 
 ```bash
-# Clone and install
 git clone https://github.com/chee86j/VoucherHousingPlatform.git
 cd VoucherHousingPlatform
 pnpm install
 
-# Start database services
-docker-compose up -d
+# Copy the development environment template.
+# PowerShell: Copy-Item .env.example .env.local
+# macOS/Linux: cp .env.example .env.local
 
-# Copy environment file
-cp .env.example .env.local
-
-# Generate Prisma client
+docker compose up -d
 pnpm db:generate
-
-# Run database migrations
-pnpm db:push
-
-# Seed development data
+pnpm db:migrate
 pnpm --filter @vhp/database run seed
-
-# Start development servers
 pnpm dev
 ```
 
-The API runs at `http://localhost:4000` and the web app at `http://localhost:3000`.
+The API listens on `http://localhost:4000`; the web application listens on `http://localhost:3000`. Health endpoints are available at `/health`, `/health/live`, and `/health/ready` on the API. API routes are prefixed with `/api` (for example, `GET /api/clients`).
 
-### Development Credentials
+`pnpm db:migrate` is the normal local-development migration path. `pnpm db:push` is available for disposable schema iteration but does not create migration files.
 
-After seeding:
+### Environment
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | admin@vhp.local | admin123!@# |
-| Broker | broker@acme-realty.local | broker123!@# |
-| Assistant | assistant@acme-realty.local | assistant123!@# |
-| Auditor | auditor@vhp.local | auditor123!@# |
+Copy `.env.example` to `.env.local` and replace all development secrets before using anything outside a local machine. The current variables configure:
 
-## Documentation
+- PostgreSQL (`DATABASE_URL`)
+- Redis (`REDIS_URL`)
+- JWT signing (`JWT_SECRET`, `JWT_EXPIRES_IN`)
+- API port and CORS (`PORT`, `CORS_ORIGINS`)
+- the web-to-API base URL (`NEXT_PUBLIC_API_URL`)
 
-- `docs/ARCHITECTURE_DISCOVERY.md` — Normative architecture and product framing
-- `docs/MVP_PRD.md` — MVP product requirements
-- `docs/UI_UX_DESIGN.md` — UI/UX design including drag-and-drop workflows
-- `docs/OPEN_QUESTIONS_AND_STACK.md` — Open questions and tech stack reasoning
-- `docs/REQUIREMENT_MATRIX_GUIDE.md` — Voucher program requirements
+Document uploads default to a local `.data/documents` directory. `DOCUMENT_STORAGE_ROOT` can override that location for development and testing only. The local adapter uses private quarantine paths and filesystem permissions, but it is not a production storage solution.
 
-## Security
+### Seed-data caveat
 
-This platform handles sensitive PII including government IDs, income, household composition, and health-adjacent data (HASA program participation implies HIV status). Security is a hard requirement:
+The seed script creates example organizations and users, but its current password hashes use a legacy development SHA-256 helper while the API verifies passwords with Argon2id. Therefore the seeded email/password pairs are **not a supported sign-in path** in the current application. Provision an Argon2id-hashed active user in a local database to exercise the login/MFA flow; do not rely on seeded credentials or use them outside development.
 
-- **Auth:** Email/password with Argon2id + mandatory TOTP MFA for staff
-- **Authorization:** Server-side guards, never client-side gating
-- **Audit:** Append-only, hash-chained audit log for all sensitive operations
-- **Documents:** Private storage only, signed URLs ≤5 min, every access audited
-- **Fair Housing:** No ranking by protected characteristics; filter, never rank
+## Available scripts
 
-See `docs/ARCHITECTURE_DISCOVERY.md` §10 for the complete security model.
-
-## Scripts
-
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Start all services in development mode |
-| `pnpm build` | Build all packages |
-| `pnpm lint` | Lint all packages |
-| `pnpm typecheck` | Type-check all packages |
-| `pnpm test` | Run all tests |
-| `pnpm db:generate` | Generate Prisma client |
-| `pnpm db:migrate` | Run Prisma migrations |
-| `pnpm db:push` | Push schema to database (dev) |
+| Command | Purpose |
+| --- | --- |
+| `pnpm dev` | Start workspace development servers |
+| `pnpm build` | Build all workspace packages |
+| `pnpm lint` | Lint workspace packages |
+| `pnpm typecheck` | Type-check workspace packages |
+| `pnpm test` | Run configured tests |
+| `pnpm db:generate` | Generate the Prisma client |
+| `pnpm db:migrate` | Create/apply Prisma development migrations |
+| `pnpm db:push` | Push the schema directly (disposable development only) |
 | `pnpm db:studio` | Open Prisma Studio |
 
-## Build Phases
+## API surface
 
-The MVP is being built in phases:
+All endpoints except the health and authentication entry points require an authenticated bearer token and are further restricted by role and organization.
 
-1. ✅ **Foundation** — Monorepo, auth, audit, database schema
-2. ✅ **Core Entities** — Client, Property, Unit, Voucher, Landlord
-3. 🟡 **Workflow Engine** — Case FSM, objective fit snapshots and checklist schema; document handling remains pending
-4. 🟡 **Showings** — Broker-side grouped sessions, attendance and manual follow-up tasks API; no scoring, ranking or automatic unit selection (counsel gate)
-5. 🟡 **Broker Console** — Protected dashboard, early-stage case drag/button actions, grouped showings and follow-up; later transitions and pilot controls pending
-6. 🟡 **Documents & Admin** — Document metadata/review API and checklist updates; binary storage, signed URLs, notifications and admin UI pending
-7. 🟡 **Secure Document Storage Foundation** — Authenticated multipart upload, MIME/magic-byte validation, SHA-256 hashing and private quarantine storage; object storage, AV scanning and promotion workflow pending
-8. 🟡 **Private Document Access** — Server-authorized, rate-limited and audited byte reads for explicitly available, verified documents only; quarantine remains unreadable, and S3 adapter/scanning/signed URL support remain pending
+| Area | Current endpoints / behavior |
+| --- | --- |
+| Authentication | `POST /api/auth/login`, MFA enrollment/verification, and `GET /api/auth/me` |
+| Clients | Client CRUD; nested vouchers and household members |
+| Inventory | Landlords, properties, and units with staff role restrictions |
+| Cases | Case creation, listing, fit evaluations, and allowed state transitions |
+| Showings | Sessions, participants, attendance status, cancellation, and follow-up tasks |
+| Documents | List/register/review documents, multipart `POST /api/documents/upload`, and gated `GET /api/documents/:id/content` |
+
+The browser console intentionally exposes only a limited staff workflow. It is not a full administration interface and has no document-upload UI.
+
+## Current limitations and security status
+
+- There is no production object-store adapter, antivirus scanning, promotion workflow, retention/deletion policy, signed URL support, or encryption/key-management implementation for document bytes.
+- No endpoint promotes a quarantine file into the readable `available` namespace; normal uploads consequently remain unreadable by design.
+- The schema’s PII encryption annotations are design intent, not an application-layer encryption implementation.
+- Hash-chained auditing and the global audit interceptor are not yet a production-grade immutable audit system.
+- Database-level tenant guarantees, session revocation/lifecycle, notification delivery, pagination beyond current limits, timezone UX, and end-to-end integration coverage remain incomplete.
+- Grouped-showing invitations are internal status records only; no email, SMS, tenant portal, landlord portal, or automatic selection/ranking is implemented.
+- Later case transitions are deliberately unavailable until their supporting evidence and policy controls exist.
+
+For detailed scope and risk notes, see [the architecture discovery document](docs/ARCHITECTURE_DISCOVERY.md), [Phase 4 showing limits](docs/PHASE4_RISKS.md), [Phase 5 console limits](docs/PHASE5_CONSOLE_LIMITS.md), [Phase 7 storage limits](docs/PHASE7_SECURE_STORAGE_LIMITS.md), and [Phase 8 document access](docs/PHASE8_PRIVATE_DOCUMENT_ACCESS.md).
 
 ## License
 
-Proprietary — All rights reserved.
+Proprietary — all rights reserved.
